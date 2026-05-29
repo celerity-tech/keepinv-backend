@@ -1,0 +1,199 @@
+// Notes for AI / Contributors:
+// For fucks sake dipshit,
+// Follow existing formatting, (alignment, spacing, ordering)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id                            String                    @id @default(uuid())
+  firstName                     String?                   @map("first_name")
+  lastName                      String?                   @map("last_name")
+  email                         String                    @unique
+  password                      String
+  role                          RoleEnum                  @default(ADMIN)
+  isArchived                    Boolean                   @default(false) @map("is_archived")
+
+  createdAt                     DateTime                  @default(now()) @map("created_at")
+  updatedAt                     DateTime                  @updatedAt @map("updated_at")
+
+  stockMovements                StockMovement[]
+
+  @@map("users")
+}
+
+enum RoleEnum {
+  SUPER_ADMIN
+  ADMIN
+  USER
+}
+
+// Flat product category (e.g. "Beverages", "Electronics").
+model Category {
+  id                            String                    @id @default(uuid())
+  name                          String                    @unique
+  description                   String?
+  isArchived                    Boolean                   @default(false) @map("is_archived")
+
+  createdAt                     DateTime                  @default(now()) @map("created_at")
+  updatedAt                     DateTime                  @updatedAt @map("updated_at")
+
+  products                      Product[]
+
+  @@map("categories")
+}
+
+// Vendor a product is purchased from, so stock can be re-ordered when it runs out.
+model Supplier {
+  id                            String                    @id @default(uuid())
+  name                          String
+  contactName                   String?                   @map("contact_name")
+  email                         String?
+  phone                         String?
+  address                       String?
+  notes                         String?
+  isArchived                    Boolean                   @default(false) @map("is_archived")
+
+  createdAt                     DateTime                  @default(now()) @map("created_at")
+  updatedAt                     DateTime                  @updatedAt @map("updated_at")
+
+  products                      Product[]
+  stockMovements                StockMovement[]
+
+  @@map("suppliers")
+}
+
+// Hierarchical, self-referencing physical location (Warehouse > Aisle > Shelf > Bin) for auditing.
+model Location {
+  id                            String                    @id @default(uuid())
+  name                          String
+  code                          String?                   @unique
+  description                   String?
+  parentId                      String?                   @map("parent_id")
+  isArchived                    Boolean                   @default(false) @map("is_archived")
+
+  parent                        Location?                 @relation("LocationHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children                      Location[]                @relation("LocationHierarchy")
+
+  createdAt                     DateTime                  @default(now()) @map("created_at")
+  updatedAt                     DateTime                  @updatedAt @map("updated_at")
+
+  products                      Product[]
+  productUnits                  ProductUnit[]
+  stockMovements                StockMovement[]
+
+  @@index([parentId])
+  @@map("locations")
+}
+
+// Core SKU / catalog item. Fast-moving goods are tracked entirely here via quantityOnHand.
+model Product {
+  id                            String                    @id @default(uuid())
+  name                          String
+  description                   String?
+  sku                           String                    @unique
+  barcode                       String?                   @unique
+  brand                         String?
+  costPrice                     Decimal                   @default(0) @map("cost_price") @db.Decimal(12, 2)
+  sellingPrice                  Decimal                   @default(0) @map("selling_price") @db.Decimal(12, 2)
+  quantityOnHand                Int                       @default(0) @map("quantity_on_hand")
+  reorderPoint                  Int?                      @map("reorder_point")
+  isSerialized                  Boolean                   @default(false) @map("is_serialized")
+  isArchived                    Boolean                   @default(false) @map("is_archived")
+  categoryId                    String                    @map("category_id")
+  category                      Category                  @relation(fields: [categoryId], references: [id])
+  supplierId                    String?                   @map("supplier_id")
+  supplier                      Supplier?                 @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  locationId                    String?                   @map("location_id")
+  location                      Location?                 @relation(fields: [locationId], references: [id], onDelete: SetNull)
+
+  createdAt                     DateTime                  @default(now()) @map("created_at")
+  updatedAt                     DateTime                  @updatedAt @map("updated_at")
+
+  units                         ProductUnit[]
+  stockMovements                StockMovement[]
+
+  @@index([categoryId])
+  @@index([supplierId])
+  @@index([locationId])
+  @@map("products")
+}
+
+// Individual physical unit of a serialized product. The rfidTag field is where RFID/EPC lives later.
+model ProductUnit {
+  id                            String                    @id @default(uuid())
+  assetTag                      String?                   @unique @map("asset_tag")
+  serialNumber                  String?                   @unique @map("serial_number")
+  rfidTag                       String?                   @unique @map("rfid_tag")
+  status                        ProductUnitStatus         @default(IN_STOCK)
+
+  productId                     String                    @map("product_id")
+  product                       Product                   @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  locationId                    String?                   @map("location_id")
+  location                      Location?                 @relation(fields: [locationId], references: [id], onDelete: SetNull)
+
+  createdAt                     DateTime                  @default(now()) @map("created_at")
+  updatedAt                     DateTime                  @updatedAt @map("updated_at")
+
+  stockMovements                StockMovement[]
+
+  @@index([productId])
+  @@index([locationId])
+  @@map("product_units")
+}
+
+// Append-only audit ledger of every stock change. quantityAfter is a snapshot for trustworthy counts.
+model StockMovement {
+  id                            String                    @id @default(uuid())
+  type                          StockMovementType
+  quantityChange                Int                       @map("quantity_change")
+  quantityAfter                 Int                       @map("quantity_after")
+  note                          String?
+
+  productId                     String                    @map("product_id")
+  product                       Product                   @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  productUnitId                 String?                   @map("product_unit_id")
+  productUnit                   ProductUnit?              @relation(fields: [productUnitId], references: [id], onDelete: SetNull)
+
+  locationId                    String?                   @map("location_id")
+  location                      Location?                 @relation(fields: [locationId], references: [id], onDelete: SetNull)
+
+  supplierId                    String?                   @map("supplier_id")
+  supplier                      Supplier?                 @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  
+  userId                        String                    @map("user_id")
+  user                          User                      @relation(fields: [userId], references: [id])
+
+  createdAt                     DateTime                  @default(now()) @map("created_at")
+
+  @@index([productId])
+  @@index([productUnitId])
+  @@index([supplierId])
+  @@index([userId])
+  @@map("stock_movements")
+}
+
+enum ProductUnitStatus {
+  IN_STOCK
+  RESERVED
+  SOLD
+  DAMAGED
+  RETURNED
+  LOST
+}
+
+enum StockMovementType {
+  PURCHASE
+  SALE
+  ADJUSTMENT
+  TRANSFER
+  RETURN
+  INITIAL
+}
