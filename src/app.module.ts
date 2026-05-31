@@ -14,6 +14,9 @@ import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CategoriesModule } from './modules/categories/categories.module';
 import { SuppliersModule } from './modules/suppliers/suppliers.module';
+import { LocationsModule } from './modules/locations/locations.module';
+import { ProductsModule } from './modules/products/products.module';
+import { StockMovementsModule } from './modules/stock-movements/stock-movements.module';
 
 @Module({
   imports: [
@@ -23,7 +26,10 @@ import { SuppliersModule } from './modules/suppliers/suppliers.module';
     UsersModule,
     AuthModule,
     CategoriesModule,
-    SuppliersModule
+    SuppliersModule,
+    LocationsModule,
+    ProductsModule,
+    StockMovementsModule
   ],
   controllers: [AppController],
   providers: [

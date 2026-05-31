@@ -88,21 +88,13 @@ model SupplierLink {
   @@map("supplier_links")
 }
 
-// model SupplierLink {
-  
-// }
-
-// Hierarchical, self-referencing physical location (Warehouse > Aisle > Shelf > Bin) for auditing.
+// Flat physical location (e.g. "Warehouse A", "Front Shelf") for auditing where stock lives.
 model Location {
   id                            String                    @id @default(uuid())
   name                          String
   code                          String?                   @unique
   description                   String?
-  parentId                      String?                   @map("parent_id")
   isArchived                    Boolean                   @default(false) @map("is_archived")
-
-  parent                        Location?                 @relation("LocationHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
-  children                      Location[]                @relation("LocationHierarchy")
 
   createdAt                     DateTime                  @default(now()) @map("created_at")
   updatedAt                     DateTime                  @updatedAt @map("updated_at")
@@ -111,7 +103,6 @@ model Location {
   productUnits                  ProductUnit[]
   stockMovements                StockMovement[]
 
-  @@index([parentId])
   @@map("locations")
 }
 
@@ -129,10 +120,13 @@ model Product {
   reorderPoint                  Int?                      @map("reorder_point")
   isSerialized                  Boolean                   @default(false) @map("is_serialized")
   isArchived                    Boolean                   @default(false) @map("is_archived")
+
   categoryId                    String                    @map("category_id")
   category                      Category                  @relation(fields: [categoryId], references: [id])
+
   supplierId                    String?                   @map("supplier_id")
   supplier                      Supplier?                 @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  
   locationId                    String?                   @map("location_id")
   location                      Location?                 @relation(fields: [locationId], references: [id], onDelete: SetNull)
 
