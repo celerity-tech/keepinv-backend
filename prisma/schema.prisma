@@ -64,9 +64,33 @@ model Supplier {
 
   products                      Product[]
   stockMovements                StockMovement[]
+  links                         SupplierLink[]
 
   @@map("suppliers")
 }
+
+// External re-order link for a supplier (Messenger, Shopee, etc.) so the client can buy again from the original channel.
+model SupplierLink {
+  id                            String                    @id @default(uuid())
+  supplierId                    String                    @map("supplier_id")
+  platform                      SupplierPlatform
+  url                           String
+  label                         String?
+  isArchived                    Boolean                   @default(false) @map("is_archived")
+
+  createdAt                     DateTime                  @default(now()) @map("created_at")
+  updatedAt                     DateTime                  @updatedAt @map("updated_at")
+
+  supplier                      Supplier                  @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@unique([supplierId, platform])
+  @@index([supplierId])
+  @@map("supplier_links")
+}
+
+// model SupplierLink {
+  
+// }
 
 // Hierarchical, self-referencing physical location (Warehouse > Aisle > Shelf > Bin) for auditing.
 model Location {
@@ -196,4 +220,14 @@ enum StockMovementType {
   TRANSFER
   RETURN
   INITIAL
+}
+
+enum SupplierPlatform {
+  MESSENGER
+  VIBER
+  SHOPEE
+  LAZADA
+  FACEBOOK
+  WEBSITE
+  OTHER
 }
