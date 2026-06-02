@@ -17,6 +17,7 @@ import { SuppliersModule } from './modules/suppliers/suppliers.module';
 import { LocationsModule } from './modules/locations/locations.module';
 import { ProductsModule } from './modules/products/products.module';
 import { StockMovementsModule } from './modules/stock-movements/stock-movements.module';
+import { InventoryAuditModule } from './modules/inventory-audit/inventory-audit.module';
 
 @Module({
   imports: [
@@ -29,7 +30,8 @@ import { StockMovementsModule } from './modules/stock-movements/stock-movements.
     SuppliersModule,
     LocationsModule,
     ProductsModule,
-    StockMovementsModule
+    StockMovementsModule,
+    InventoryAuditModule
   ],
   controllers: [AppController],
   providers: [

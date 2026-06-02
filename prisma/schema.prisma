@@ -23,6 +23,7 @@ model User {
   updatedAt                     DateTime                  @updatedAt @map("updated_at")
 
   stockMovements                StockMovement[]
+  inventoryAudits               InventoryAudit[]
 
   @@map("users")
 }
@@ -102,6 +103,7 @@ model Location {
   products                      Product[]
   productUnits                  ProductUnit[]
   stockMovements                StockMovement[]
+  inventoryAudits               InventoryAudit[]
 
   @@map("locations")
 }
@@ -160,6 +162,7 @@ model ProductUnit {
   updatedAt                     DateTime                  @updatedAt @map("updated_at")
 
   stockMovements                StockMovement[]
+  inventoryAuditScans           InventoryAuditScan[]
 
   @@index([productId])
   @@index([locationId])
@@ -198,6 +201,52 @@ model StockMovement {
   @@map("stock_movements")
 }
 
+model InventoryAudit {
+  id                            String                    @id @default(uuid())
+  auditNo                       String                    @unique @map("audit_no")
+  status                        InventoryAuditStatus      @default(IN_PROGRESS)
+  startedAt                     DateTime                  @default(now()) @map("started_at")
+  completedAt                   DateTime?                 @map("completed_at")
+
+  locationId                    String                    @map("location_id")
+  location                      Location                  @relation(fields: [locationId], references: [id])
+
+  userId                        String                    @map("user_id")
+  user                          User                      @relation(fields: [userId], references: [id])
+
+  createdAt                     DateTime                  @default(now()) @map("created_at")
+  updatedAt                     DateTime                  @updatedAt @map("updated_at")
+
+  scans                         InventoryAuditScan[]
+
+  @@index([locationId])
+  @@index([userId])
+  @@index([status])
+  @@index([startedAt])
+  @@map("inventory_audits")
+}
+
+model InventoryAuditScan {
+  id                            String                    @id @default(uuid())
+  scanValue                     String                    @map("scan_value")
+  scanMode                      InventoryAuditScanMode    @default(RFID) @map("scan_mode")
+
+  auditId                       String                    @map("audit_id")
+  audit                         InventoryAudit            @relation(fields: [auditId], references: [id], onDelete: Cascade)
+
+  productUnitId                 String?                   @map("product_unit_id")
+  productUnit                   ProductUnit?              @relation(fields: [productUnitId], references: [id], onDelete: SetNull)
+  
+  result                        InventoryAuditScanResult  @default(UNKNOWN_TAG)
+  scannedAt                     DateTime                  @default(now()) @map("scanned_at")
+
+  @@index([auditId])
+  @@index([scanValue])
+  @@index([productUnitId])
+  @@unique([auditId, scanValue])
+  @@map("inventory_audit_scans")
+}
+
 enum ProductUnitStatus {
   IN_STOCK
   RESERVED
@@ -224,4 +273,22 @@ enum SupplierPlatform {
   FACEBOOK
   WEBSITE
   OTHER
+}
+
+enum InventoryAuditStatus {
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum InventoryAuditScanResult {
+  MATCHED
+  MISPLACED
+  UNKNOWN_TAG
+}
+
+enum InventoryAuditScanMode {
+  RFID
+  BARCODE
+  MANUAL
 }
