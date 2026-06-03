@@ -16,6 +16,7 @@ import { CategoriesModule } from './modules/categories/categories.module';
 import { SuppliersModule } from './modules/suppliers/suppliers.module';
 import { LocationsModule } from './modules/locations/locations.module';
 import { ProductsModule } from './modules/products/products.module';
+import { ProductUnitModule } from './modules/product-unit/product-unit.module';
 import { StockMovementsModule } from './modules/stock-movements/stock-movements.module';
 import { InventoryAuditModule } from './modules/inventory-audit/inventory-audit.module';
 
@@ -30,8 +31,9 @@ import { InventoryAuditModule } from './modules/inventory-audit/inventory-audit.
     SuppliersModule,
     LocationsModule,
     ProductsModule,
+    ProductUnitModule,
     StockMovementsModule,
-    InventoryAuditModule
+    InventoryAuditModule,
   ],
   controllers: [AppController],
   providers: [

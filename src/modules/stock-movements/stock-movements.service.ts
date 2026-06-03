@@ -9,6 +9,7 @@ import { FilterStockMovementsDTO } from './dto/filter-stock-movements.dto';
 // Surface who/where/what for each ledger row so an auditor can read it without extra calls.
 const MOVEMENT_INCLUDE: Prisma.StockMovementInclude = {
   product: true,
+  productUnit: true,
   supplier: true,
   location: true,
   user: true,
@@ -109,10 +110,11 @@ export class StockMovementsService {
   }
 
   private buildWhere(filter: FilterStockMovementsDTO): Prisma.StockMovementWhereInput {
-    const { productId, type, dateFrom, dateTo } = filter;
+    const { productId, productUnitId, type, dateFrom, dateTo } = filter;
     const where: Prisma.StockMovementWhereInput = {};
 
     if (productId) where.productId = productId;
+    if (productUnitId) where.productUnitId = productUnitId;
     if (type) where.type = type;
 
     if (dateFrom || dateTo) {

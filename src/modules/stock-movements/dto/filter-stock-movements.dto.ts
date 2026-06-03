@@ -9,6 +9,10 @@ export class FilterStockMovementsDTO extends PaginationQueryDTO {
   productId?: string;
 
   @IsOptional()
+  @IsUUID()
+  productUnitId?: string;
+
+  @IsOptional()
   @IsEnum(StockMovementType)
   type?: StockMovementType;
 
