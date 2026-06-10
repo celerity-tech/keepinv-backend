@@ -2,7 +2,7 @@
 FROM oven/bun:alpine AS builder
 WORKDIR /app
 
-RUN apk add --no-cache libc6-compat openssl
+RUN apk add --no-cache libc6-compat
 
 # Copy configuration files
 COPY package.json bun.lock ./
@@ -26,7 +26,7 @@ FROM oven/bun:alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
-RUN apk add --no-cache libc6-compat openssl
+RUN apk add --no-cache libc6-compat
 
 # Copy everything from builder
 COPY --from=builder /app ./
