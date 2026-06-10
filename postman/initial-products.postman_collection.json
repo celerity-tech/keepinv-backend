@@ -1,0 +1,320 @@
+{
+  "info": {
+    "name": "Asset-Wise — Initial Products (No Stock)",
+    "description": "Seeds the motorshop control-cable catalog from the handwritten inventory (page 15).\n\nRun order:\n1. '0. Login' — captures {{accessToken}}.\n2. Folder '1. Categories' — creates the 3 cable categories and captures their IDs into variables.\n3. Folders '2. Products …' — creates 22 Product records with NO stock (quantityOnHand defaults to 0), null location, null supplier.\n\nThese are Product records (catalog SKUs), NOT ProductUnit records. Edit {{baseUrl}}, {{email}}, {{password}} before running.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000/api/v1" },
+    { "key": "email", "value": "admin@example.com" },
+    { "key": "password", "value": "changeme" },
+    { "key": "accessToken", "value": "" },
+    { "key": "clutchCategoryId", "value": "" },
+    { "key": "brakeCategoryId", "value": "" },
+    { "key": "speedometerCategoryId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "0. Login (run first)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const token = pm.response.json().data.accessToken;",
+              "pm.collectionVariables.set('accessToken', token);",
+              "pm.test('got token', () => pm.expect(token).to.be.a('string').and.not.empty);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "auth": { "type": "noauth" },
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}"
+        },
+        "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] }
+      }
+    },
+    {
+      "name": "1. Categories",
+      "item": [
+        {
+          "name": "Create Clutch Cable category",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.collectionVariables.set('clutchCategoryId', pm.response.json().data.id);"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Clutch Cable\",\n  \"description\": \"Motorcycle clutch control cables\"\n}" },
+            "url": { "raw": "{{baseUrl}}/categories", "host": ["{{baseUrl}}"], "path": ["categories"] }
+          }
+        },
+        {
+          "name": "Create Brake Cable category",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.collectionVariables.set('brakeCategoryId', pm.response.json().data.id);"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Brake Cable\",\n  \"description\": \"Motorcycle brake control cables\"\n}" },
+            "url": { "raw": "{{baseUrl}}/categories", "host": ["{{baseUrl}}"], "path": ["categories"] }
+          }
+        },
+        {
+          "name": "Create Speedometer Cable category",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.collectionVariables.set('speedometerCategoryId', pm.response.json().data.id);"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Speedometer Cable\",\n  \"description\": \"Motorcycle speedometer drive cables\"\n}" },
+            "url": { "raw": "{{baseUrl}}/categories", "host": ["{{baseUrl}}"], "path": ["categories"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Products — Clutch Cable",
+      "item": [
+        {
+          "name": "HD3 Clutch Cable",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"HD3 Clutch Cable\",\n  \"sku\": \"CLT-HD3-KNC\",\n  \"brand\": \"KNC\",\n  \"categoryId\": \"{{clutchCategoryId}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/products", "host": ["{{baseUrl}}"], "path": ["products"] }
+          }
+        },
+        {
+          "name": "GR125 Clutch Cable",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"GR125 Clutch Cable\",\n  \"sku\": \"CLT-GR125-KNC\",\n  \"brand\": \"KNC\",\n  \"categoryId\": \"{{clutchCategoryId}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/products", "host": ["{{baseUrl}}"], "path": ["products"] }
+          }
+        },
+        {
+          "name": "Rouser 135 L-TE Clutch Cable",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Rouser 135 L-TE Clutch Cable\",\n  \"sku\": \"CLT-RS135-UH\",\n  \"brand\": \"UH\",\n  \"categoryId\": \"{{clutchCategoryId}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/products", "host": ["{{baseUrl}}"], "path": ["products"] }
+          }
+        },
+        {
+          "name": "Raider 150 Clutch Cable",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Raider 150 Clutch Cable\",\n  \"sku\": \"CLT-RDR150-1101\",\n  \"brand\": \"1101\",\n  \"categoryId\": \"{{clutchCategoryId}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/products", "host": ["{{baseUrl}}"], "path": ["products"] }
+          }
+        },
+        {
+          "name": "Raider 150 Fi Clutch Cable",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Raider 150 Fi Clutch Cable\",\n  \"sku\": \"CLT-RDR150FI-VLT\",\n  \"brand\": \"Valiant\",\n  \"categoryId\": \"{{clutchCategoryId}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/products", "host": ["{{baseUrl}}"], "path": ["products"] }
+          }
+        },
+        {
+          "name": "Sniper 150 Clutch Cable",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Sniper 150 Clutch Cable\",\n  \"sku\": \"CLT-SNP150-KRY\",\n  \"brand\": \"Kryon\",\n  \"categoryId\": \"{{clutchCategoryId}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/products", "host": ["{{baseUrl}}"], "path": ["products"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Products — Brake Cable",
+      "item": [
+        {
+          "name": "YMX 125 Alpha Brake Cable",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"YMX 125 Alpha Brake Cable\",\n  \"sku\": \"BRK-YMX125-KNC\",\n  \"brand\": \"KNC\",\n  \"categoryId\": \"{{brakeCategoryId}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/products", "host": ["{{baseUrl}}"], "path": ["products"] }
+          }
+        },
+        {
+          "name": "Barako 175 Brake Cable",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Barako 175 Brake Cable\",\n  \"sku\": \"BRK-BRK175-KNC\",\n  \"brand\": \"KNC\",\n  \"categoryId\": \"{{brakeCategoryId}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/products", "host": ["{{baseUrl}}"], "path": ["products"] }
+          }
+        },
+        {
+          "name": "Barako 175 Brake Cable (Otaka)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Barako 175 Brake Cable (Otaka)\",\n  \"sku\": \"BRK-BRK175-OTK\",\n  \"brand\": \"Otaka\",\n  \"categoryId\": \"{{brakeCategoryId}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/products", "host": ["{{baseUrl}}"], "path": ["products"] }
+          }
+        },
+        {
+          "name": "HD3 Brake Cable",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"HD3 Brake Cable\",\n  \"sku\": \"BRK-HD3-KNC\",\n  \"brand\": \"KNC\",\n  \"categoryId\": \"{{brakeCategoryId}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/products", "host": ["{{baseUrl}}"], "path": ["products"] }
+          }
+        },
+        {
+          "name": "Wygo Brake Cable",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Wygo Brake Cable\",\n  \"sku\": \"BRK-WYGO\",\n  \"categoryId\": \"{{brakeCategoryId}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/products", "host": ["{{baseUrl}}"], "path": ["products"] }
+          }
+        },
+        {
+          "name": "Wave 100 Brake Cable",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Wave 100 Brake Cable\",\n  \"sku\": \"BRK-WAVE100-GRR\",\n  \"brand\": \"GRR\",\n  \"categoryId\": \"{{brakeCategoryId}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/products", "host": ["{{baseUrl}}"], "path": ["products"] }
+          }
+        },
+        {
+          "name": "Beat Fi Brake Cable",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Beat Fi Brake Cable\",\n  \"sku\": \"BRK-BEATFI-ZCH\",\n  \"brand\": \"Zecheng\",\n  \"categoryId\": \"{{brakeCategoryId}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/products", "host": ["{{baseUrl}}"], "path": ["products"] }
+          }
+        },
+        {
+          "name": "Click 125 Brake Cable",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Click 125 Brake Cable\",\n  \"sku\": \"BRK-CLICK125-OTK\",\n  \"brand\": \"Otaka\",\n  \"categoryId\": \"{{brakeCategoryId}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/products", "host": ["{{baseUrl}}"], "path": ["products"] }
+          }
+        },
+        {
+          "name": "Mio 125 Brake Cable",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Mio 125 Brake Cable\",\n  \"sku\": \"BRK-MIO125-OTK\",\n  \"brand\": \"Otaka\",\n  \"categoryId\": \"{{brakeCategoryId}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/products", "host": ["{{baseUrl}}"], "path": ["products"] }
+          }
+        },
+        {
+          "name": "Mio Brake Cable",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Mio Brake Cable\",\n  \"sku\": \"BRK-MIO-OTK\",\n  \"brand\": \"Otaka\",\n  \"categoryId\": \"{{brakeCategoryId}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/products", "host": ["{{baseUrl}}"], "path": ["products"] }
+          }
+        },
+        {
+          "name": "RM100 Brake Cable",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"RM100 Brake Cable\",\n  \"sku\": \"BRK-RM100-YHK\",\n  \"brand\": \"YHK\",\n  \"categoryId\": \"{{brakeCategoryId}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/products", "host": ["{{baseUrl}}"], "path": ["products"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Products — Speedometer Cable",
+      "item": [
+        {
+          "name": "RM100 Speedometer Cable",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"RM100 Speedometer Cable\",\n  \"sku\": \"SPD-RM100-EIKO\",\n  \"brand\": \"Eiko\",\n  \"categoryId\": \"{{speedometerCategoryId}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/products", "host": ["{{baseUrl}}"], "path": ["products"] }
+          }
+        },
+        {
+          "name": "Rouser 135 Speedometer Cable",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Rouser 135 Speedometer Cable\",\n  \"sku\": \"SPD-RS135-ORT\",\n  \"brand\": \"Ortaine\",\n  \"categoryId\": \"{{speedometerCategoryId}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/products", "host": ["{{baseUrl}}"], "path": ["products"] }
+          }
+        },
+        {
+          "name": "Rmahn 110 Speedometer Cable",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Rmahn 110 Speedometer Cable\",\n  \"sku\": \"SPD-RMAHN110-MKT\",\n  \"brand\": \"Makoto\",\n  \"categoryId\": \"{{speedometerCategoryId}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/products", "host": ["{{baseUrl}}"], "path": ["products"] }
+          }
+        },
+        {
+          "name": "Rmahn 115 Speedometer Cable",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Rmahn 115 Speedometer Cable\",\n  \"sku\": \"SPD-RMAHN115-MKT\",\n  \"brand\": \"Makoto\",\n  \"categoryId\": \"{{speedometerCategoryId}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/products", "host": ["{{baseUrl}}"], "path": ["products"] }
+          }
+        },
+        {
+          "name": "Raider J 110 Speedometer Cable",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Raider J 110 Speedometer Cable\",\n  \"sku\": \"SPD-RDRJ110-MKT\",\n  \"brand\": \"Makoto\",\n  \"categoryId\": \"{{speedometerCategoryId}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/products", "host": ["{{baseUrl}}"], "path": ["products"] }
+          }
+        }
+      ]
+    }
+  ]
+}

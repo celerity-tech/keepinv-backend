@@ -16,10 +16,19 @@ export class ResponseInterceptor<T> implements NestInterceptor<T, ApiResponse<T>
     return next.handle().pipe(
       map((data): ApiResponse<T> => {
         if (isPaginated(data)) {
-          return { statusCode, message: 'Success', data: data.data as T, meta: data.meta };
+          return { 
+            statusCode, 
+            message: 'Success', 
+            data: data.data as T, 
+            meta: data.meta 
+          };
         }
 
-        return { statusCode, message: 'Success', data };
+        return { 
+          statusCode, 
+          message: 'Success', 
+          data 
+        };
       }),
     );
   }

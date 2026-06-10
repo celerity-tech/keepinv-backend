@@ -21,6 +21,8 @@ const buildMovement = (overrides: Partial<StockMovement> = {}): StockMovement =>
   locationId: null,
   supplierId: null,
   userId: USER_ID,
+  saleId: null,
+  saleItemId: null,
   createdAt: new Date(),
   ...overrides,
 });

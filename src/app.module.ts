@@ -3,7 +3,7 @@ import { ThrottlerGuard } from '@nestjs/throttler';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
-import { ResponseInterceptor } from './common/interceptors/response.interceptors';
+import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import { RateLimitModule } from './core/security/rate-limit.module';
 import { HealthModule } from './core/health/health.module';
 
@@ -19,6 +19,7 @@ import { ProductsModule } from './modules/products/products.module';
 import { ProductUnitModule } from './modules/product-unit/product-unit.module';
 import { StockMovementsModule } from './modules/stock-movements/stock-movements.module';
 import { InventoryAuditModule } from './modules/inventory-audit/inventory-audit.module';
+import { PosModule } from './modules/pos/pos.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { InventoryAuditModule } from './modules/inventory-audit/inventory-audit.
     ProductUnitModule,
     StockMovementsModule,
     InventoryAuditModule,
+    PosModule,
   ],
   controllers: [AppController],
   providers: [
