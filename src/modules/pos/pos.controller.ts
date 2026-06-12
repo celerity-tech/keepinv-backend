@@ -15,6 +15,7 @@ import { PassportJwtGuard } from '../auth/guards/passport-jwt.guard';
 import type { AuthenticatedUser } from '../auth/types/auth.types';
 import { CheckoutPosDTO } from './dto/checkout-pos.dto';
 import { FilterSalesDTO } from './dto/filter-sales.dto';
+import { ListProductUnitsDTO } from './dto/list-product-units.dto';
 import { SearchPosItemsDTO } from './dto/search-pos-items.dto';
 import { VoidSaleDTO } from './dto/void-sale.dto';
 import { PosService } from './pos.service';
@@ -28,6 +29,14 @@ export class PosController {
   @Get('search-items')
   async searchItems(@Query() query: SearchPosItemsDTO): Promise<PosSearchItem[]> {
     return this.posService.searchItems(query);
+  }
+
+  @Get('products/:id/units')
+  async getProductUnits(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: ListProductUnitsDTO,
+  ): Promise<PosSearchItem[]> {
+    return this.posService.getProductUnits(id, query);
   }
 
   @Post('checkout')

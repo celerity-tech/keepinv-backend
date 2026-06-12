@@ -14,6 +14,7 @@ import { PrismaService } from '../../core/database/prisma.service';
 import { PaginatedResponse } from '../../common/responses/paginated-api.response';
 import { CheckoutPosDTO, CheckoutPosItemDTO } from './dto/checkout-pos.dto';
 import { FilterSalesDTO } from './dto/filter-sales.dto';
+import { ListProductUnitsDTO } from './dto/list-product-units.dto';
 import { SearchPosItemsDTO } from './dto/search-pos-items.dto';
 import { VoidSaleDTO } from './dto/void-sale.dto';
 import {
@@ -110,6 +111,30 @@ export class PosService {
       ...products.map((product) => this.toProductSearchItem(product)),
       ...units.map((unit) => this.toProductUnitSearchItem(unit)),
     ].slice(0, query.limit);
+  }
+
+  async getProductUnits(
+    productId: string,
+    query: ListProductUnitsDTO,
+  ): Promise<PosSearchItem[]> {
+    const product = await this.prisma.product.findFirst({
+      where: { id: productId, isArchived: false },
+    });
+    if (!product) throw new NotFoundException('Product not found');
+
+    const where: Prisma.ProductUnitWhereInput = { productId };
+    if (query.sellableOnly) {
+      where.status = { in: Array.from(SELLABLE_UNIT_STATUSES) };
+    }
+
+    const units = await this.prisma.productUnit.findMany({
+      where,
+      include: { product: true },
+      orderBy: [{ assetTag: 'asc' }, { serialNumber: 'asc' }, { rfidTag: 'asc' }],
+      take: query.limit,
+    });
+
+    return units.map((unit) => this.toProductUnitSearchItem(unit));
   }
 
   async checkout(userId: string, body: CheckoutPosDTO): Promise<PosSaleResult> {
