@@ -73,6 +73,8 @@ export class ProductUnitService {
     await this.ensureIdentifiersAvailable(units);
 
     return this.prisma.$transaction(async (tx) => {
+      await this.prisma.setTenantContext(tx);
+
       const createdUnits: ProductUnitWithRelations[] = [];
 
       for (const unit of units) {
@@ -215,6 +217,8 @@ export class ProductUnitService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      await this.prisma.setTenantContext(tx);
+
       const updatedProduct = await tx.product.update({
         where: { id: current.productId },
         data: { quantityOnHand: { increment: delta } },
@@ -268,8 +272,9 @@ export class ProductUnitService {
     const { page, limit } = filter;
     const where = this.buildWhere(filter);
 
-    const [data, total] = await this.prisma.$transaction([
-      this.prisma.productUnit.findMany({
+    const { data, total } = await this.prisma.$transaction(async (tx) => {
+      await this.prisma.setTenantContext(tx);
+      const rows = await tx.productUnit.findMany({
         where,
         include: PRODUCT_UNIT_INCLUDE,
         orderBy: [
@@ -280,9 +285,10 @@ export class ProductUnitService {
         ],
         skip: (page - 1) * limit,
         take: limit,
-      }),
-      this.prisma.productUnit.count({ where }),
-    ]);
+      });
+      const count = await tx.productUnit.count({ where });
+      return { data: rows, total: count };
+    });
 
     return {
       data,

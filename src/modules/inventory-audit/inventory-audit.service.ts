@@ -62,16 +62,18 @@ export class InventoryAuditService {
     const { page, limit } = filter;
     const where = this.buildWhere(filter);
 
-    const [audits, total] = await this.prisma.$transaction([
-      this.prisma.inventoryAudit.findMany({
+    const { audits, total } = await this.prisma.$transaction(async (tx) => {
+      await this.prisma.setTenantContext(tx);
+      const rows = await tx.inventoryAudit.findMany({
         where,
         include: INVENTORY_AUDIT_INCLUDE,
         orderBy: { startedAt: 'desc' },
         skip: (page - 1) * limit,
         take: limit,
-      }),
-      this.prisma.inventoryAudit.count({ where }),
-    ]);
+      });
+      const count = await tx.inventoryAudit.count({ where });
+      return { audits: rows, total: count };
+    });
 
     const data = await Promise.all(
       audits.map(async (audit) => {
@@ -156,6 +158,7 @@ export class InventoryAuditService {
     }
 
     await this.prisma.$transaction(async (tx) => {
+      await this.prisma.setTenantContext(tx);
       await this.refreshScanResults(audit.id, audit.locationId, tx);
       await tx.inventoryAudit.update({
         where: { id },
@@ -274,6 +277,7 @@ export class InventoryAuditService {
       status: audit.status,
       startedAt: audit.startedAt,
       completedAt: audit.completedAt,
+      organizationId: audit.organizationId,
       locationId: audit.locationId,
       userId: audit.userId,
       createdAt: audit.createdAt,

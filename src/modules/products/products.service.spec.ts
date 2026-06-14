@@ -19,6 +19,7 @@ const buildProduct = (overrides: Partial<Product> = {}): Product => ({
   reorderPoint: null,
   isSerialized: false,
   isArchived: false,
+  organizationId: 'org-1',
   categoryId: 'cccccccc-cccc-cccc-cccc-cccccccccccc',
   supplierId: null,
   locationId: null,
@@ -48,6 +49,7 @@ describe('ProductsService', () => {
     category: { findFirst: jest.Mock };
     supplier: { findFirst: jest.Mock };
     location: { findFirst: jest.Mock };
+    setTenantContext: jest.Mock;
     $transaction: jest.Mock;
   };
 
@@ -65,8 +67,15 @@ describe('ProductsService', () => {
       category: { findFirst: jest.fn() },
       supplier: { findFirst: jest.fn() },
       location: { findFirst: jest.fn() },
+      setTenantContext: jest.fn(),
       $transaction: jest.fn(),
     };
+    // Interactive transactions receive the same mock as the tx client; array form resolves all.
+    prisma.$transaction.mockImplementation((arg: unknown) =>
+      typeof arg === 'function'
+        ? (arg as (tx: typeof prisma) => unknown)(prisma)
+        : Promise.all(arg as Promise<unknown>[]),
+    );
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [ProductsService, { provide: PrismaService, useValue: prisma }],
@@ -83,7 +92,7 @@ describe('ProductsService', () => {
     it('creates a product when the SKU is free and relations are valid', async () => {
       const created = buildProduct();
       prisma.category.findFirst.mockResolvedValue({ id: baseCreate.categoryId });
-      prisma.product.findUnique.mockResolvedValue(null);
+      prisma.product.findFirst.mockResolvedValue(null);
       prisma.product.create.mockResolvedValue(created);
 
       await expect(service.createProduct(baseCreate)).resolves.toEqual(created);
@@ -94,12 +103,12 @@ describe('ProductsService', () => {
       prisma.category.findFirst.mockResolvedValue(null);
 
       await expect(service.createProduct(baseCreate)).rejects.toThrow(NotFoundException);
-      expect(prisma.product.findUnique).not.toHaveBeenCalled();
+      expect(prisma.product.findFirst).not.toHaveBeenCalled();
     });
 
     it('rejects a SKU already used by an active product', async () => {
       prisma.category.findFirst.mockResolvedValue({ id: baseCreate.categoryId });
-      prisma.product.findUnique.mockResolvedValue(buildProduct());
+      prisma.product.findFirst.mockResolvedValue(buildProduct());
 
       await expect(service.createProduct(baseCreate)).rejects.toThrow(ConflictException);
       expect(prisma.product.create).not.toHaveBeenCalled();
@@ -108,7 +117,7 @@ describe('ProductsService', () => {
     it('reactivates an archived product with the same SKU', async () => {
       const archived = buildProduct({ isArchived: true });
       prisma.category.findFirst.mockResolvedValue({ id: baseCreate.categoryId });
-      prisma.product.findUnique.mockResolvedValue(archived);
+      prisma.product.findFirst.mockResolvedValue(archived);
       prisma.product.update.mockResolvedValue({ ...archived, isArchived: false });
 
       await service.createProduct(baseCreate);
@@ -122,7 +131,7 @@ describe('ProductsService', () => {
 
     it('rejects a barcode already owned by a different product', async () => {
       prisma.category.findFirst.mockResolvedValue({ id: baseCreate.categoryId });
-      prisma.product.findUnique
+      prisma.product.findFirst
         .mockResolvedValueOnce(null) // SKU lookup
         .mockResolvedValueOnce(buildProduct({ id: 'other', barcode: '12345' })); // barcode lookup
 
@@ -139,7 +148,8 @@ describe('ProductsService', () => {
 
     it('returns paginated data with computed meta', async () => {
       const rows = [buildProduct()];
-      prisma.$transaction.mockResolvedValue([rows, 23]);
+      prisma.product.findMany.mockResolvedValue(rows);
+      prisma.product.count.mockResolvedValue(23);
 
       const result = await service.getAllProducts(filter({ page: 2, limit: 10 }));
 
@@ -151,7 +161,8 @@ describe('ProductsService', () => {
     });
 
     it('builds a low-stock + search + category where clause', async () => {
-      prisma.$transaction.mockResolvedValue([[], 0]);
+      prisma.product.findMany.mockResolvedValue([]);
+      prisma.product.count.mockResolvedValue(0);
 
       await service.getAllProducts(
         filter({ search: 'cola', categoryId: 'cat-1', lowStock: true }),
@@ -183,7 +194,7 @@ describe('ProductsService', () => {
     it('rejects a SKU change that collides with a different product', async () => {
       const target = buildProduct();
       prisma.product.findFirst.mockResolvedValue(target); // getProduct
-      prisma.product.findUnique.mockResolvedValue(buildProduct({ id: 'other', sku: 'SKU-002' }));
+      prisma.product.findFirst.mockResolvedValue(buildProduct({ id: 'other', sku: 'SKU-002' }));
 
       await expect(service.updateProduct(target.id, { sku: 'SKU-002' })).rejects.toThrow(
         ConflictException,

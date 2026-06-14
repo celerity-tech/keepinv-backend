@@ -13,6 +13,10 @@ const prisma = new PrismaClient({
   adapter: new PrismaPg(new Pool({ connectionString: DATABASE_URL })),
 });
 
+// This catalog belongs to the existing client (Rapido Motorsiklo Garage). Seeds run under
+// its tenant so RLS allows the writes and organization_id resolves via the column default.
+const ORGANIZATION_ID = 'ae73d42d-aa5d-4a9f-a3a0-d92fa831d853';
+
 const CATEGORY_SEEDS = {
   // --- Original cable categories ---
   clutch: {
@@ -759,6 +763,10 @@ async function upsertCategory(
 
 async function main() {
   await prisma.$transaction(async (tx) => {
+    // Scope every write in this transaction to the client's organization (for RLS + the
+    // organization_id column default).
+    await tx.$executeRawUnsafe(`SELECT set_config('app.current_org_id', $1, true)`, ORGANIZATION_ID);
+
     const categoryIdByKey = new Map<CategoryKey, string>();
     const categoryEntries = Object.entries(CATEGORY_SEEDS) as [
       CategoryKey,
@@ -777,7 +785,7 @@ async function main() {
       }
 
       await tx.product.upsert({
-        where: { sku: seed.sku },
+        where: { organizationId_sku: { organizationId: ORGANIZATION_ID, sku: seed.sku } },
         create: {
           name: seed.name,
           sku: seed.sku,

@@ -16,6 +16,7 @@ const buildMovement = (overrides: Partial<StockMovement> = {}): StockMovement =>
   quantityChange: 5,
   quantityAfter: 5,
   note: null,
+  organizationId: 'org-1',
   productId: PRODUCT_ID,
   productUnitId: null,
   locationId: null,
@@ -30,31 +31,36 @@ const buildMovement = (overrides: Partial<StockMovement> = {}): StockMovement =>
 describe('StockMovementsService', () => {
   let service: StockMovementsService;
   let tx: {
-    product: { update: jest.Mock };
-    stockMovement: { create: jest.Mock };
+    product: { findFirst: jest.Mock; update: jest.Mock };
+    stockMovement: { findUnique: jest.Mock; findMany: jest.Mock; count: jest.Mock; create: jest.Mock };
+    $executeRaw: jest.Mock;
   };
   let prisma: {
-    product: { findFirst: jest.Mock };
+    product: { findFirst: jest.Mock; update: jest.Mock };
     supplier: { findFirst: jest.Mock };
     location: { findFirst: jest.Mock };
-    stockMovement: { findUnique: jest.Mock; findMany: jest.Mock; count: jest.Mock };
+    stockMovement: { findUnique: jest.Mock; findMany: jest.Mock; count: jest.Mock; create: jest.Mock };
+    setTenantContext: jest.Mock;
     $transaction: jest.Mock;
   };
 
   beforeEach(async () => {
-    tx = {
-      product: { update: jest.fn() },
-      stockMovement: { create: jest.fn() },
-    };
+    // tx and prisma share the model mocks so write tests can assert on tx.* while read
+    // tests assert on prisma.* — both reference the same jest.fn instances.
+    const product = { findFirst: jest.fn().mockResolvedValue({ id: PRODUCT_ID }), update: jest.fn() };
+    const stockMovement = { findUnique: jest.fn(), findMany: jest.fn(), count: jest.fn(), create: jest.fn() };
+
+    tx = { product, stockMovement, $executeRaw: jest.fn() };
 
     prisma = {
-      product: { findFirst: jest.fn().mockResolvedValue({ id: PRODUCT_ID }) },
+      product,
       supplier: { findFirst: jest.fn() },
       location: { findFirst: jest.fn() },
-      stockMovement: { findUnique: jest.fn(), findMany: jest.fn(), count: jest.fn() },
-      // Interactive form for writes; array form for the paginated read.
+      stockMovement,
+      setTenantContext: jest.fn(),
+      // Interactive form passes the shared tx; array form resolves all.
       $transaction: jest.fn().mockImplementation((arg) =>
-        typeof arg === 'function' ? arg(tx) : Promise.resolve(arg),
+        typeof arg === 'function' ? arg(tx) : Promise.all(arg),
       ),
     };
 
@@ -171,7 +177,8 @@ describe('StockMovementsService', () => {
 
     it('returns paginated data with computed meta', async () => {
       const rows = [buildMovement()];
-      prisma.$transaction.mockResolvedValueOnce([rows, 12]);
+      prisma.stockMovement.findMany.mockResolvedValue(rows);
+      prisma.stockMovement.count.mockResolvedValue(12);
 
       const result = await service.getAllStockMovements(filter({ page: 2, limit: 10 }));
 
@@ -183,7 +190,8 @@ describe('StockMovementsService', () => {
     });
 
     it('builds a productId + type + date-range where clause', async () => {
-      prisma.$transaction.mockResolvedValueOnce([[], 0]);
+      prisma.stockMovement.findMany.mockResolvedValue([]);
+      prisma.stockMovement.count.mockResolvedValue(0);
 
       await service.getAllStockMovements(
         filter({

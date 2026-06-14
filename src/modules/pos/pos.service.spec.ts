@@ -81,6 +81,7 @@ const buildProduct = (overrides: Partial<Product> = {}): Product => ({
   reorderPoint: null,
   isSerialized: false,
   isArchived: false,
+  organizationId: 'org-1',
   categoryId: 'dddddddd-dddd-dddd-dddd-dddddddddddd',
   supplierId: null,
   locationId: LOCATION_ID,
@@ -95,6 +96,7 @@ const buildUnit = (overrides: Record<string, unknown> = {}) => ({
   serialNumber: 'SN-001',
   rfidTag: 'EPC-001',
   status: ProductUnitStatus.IN_STOCK,
+  organizationId: 'org-1',
   productId: SERIALIZED_PRODUCT_ID,
   locationId: LOCATION_ID,
   createdAt: new Date(),
@@ -135,6 +137,7 @@ const buildSale = (overrides: Record<string, unknown> = {}) => ({
   completedAt: new Date(),
   voidedAt: null,
   voidReason: null,
+  organizationId: 'org-1',
   cashierId: USER_ID,
   voidedById: null,
   createdAt: new Date(),
@@ -150,7 +153,7 @@ describe('PosService', () => {
   let service: PosService;
   let createdSaleData: CreatedSaleData;
   let tx: PosTxMock;
-  let prisma: typeof tx & { $transaction: jest.Mock };
+  let prisma: typeof tx & { $transaction: jest.Mock; setTenantContext: jest.Mock };
 
   beforeEach(async () => {
     createdSaleData = {};
@@ -197,6 +200,7 @@ describe('PosService', () => {
 
     prisma = {
       ...tx,
+      setTenantContext: jest.fn(),
       $transaction: jest.fn().mockImplementation((arg: TransactionArg) =>
         typeof arg === 'function' ? arg(tx) : Promise.all(arg),
       ),

@@ -23,6 +23,7 @@ const buildProduct = (overrides: Partial<Product> = {}): Product => ({
   reorderPoint: null,
   isSerialized: true,
   isArchived: false,
+  organizationId: 'org-1',
   categoryId: 'cccccccc-cccc-cccc-cccc-cccccccccccc',
   supplierId: null,
   locationId: null,
@@ -37,6 +38,7 @@ const buildUnit = (overrides: Partial<ProductUnit> = {}) => ({
   serialNumber: 'SN-001',
   rfidTag: 'EPC-001',
   status: ProductUnitStatus.IN_STOCK,
+  organizationId: 'org-1',
   productId: PRODUCT_ID,
   locationId: LOCATION_ID,
   createdAt: new Date(),
@@ -51,42 +53,48 @@ const buildUnit = (overrides: Partial<ProductUnit> = {}) => ({
 describe('ProductUnitService', () => {
   let service: ProductUnitService;
   let tx: {
-    productUnit: { create: jest.Mock; update: jest.Mock };
-    product: { update: jest.Mock };
+    productUnit: { create: jest.Mock; update: jest.Mock; findFirst: jest.Mock; findMany: jest.Mock; count: jest.Mock };
+    product: { update: jest.Mock; findFirst: jest.Mock };
     stockMovement: { create: jest.Mock };
+    $executeRaw: jest.Mock;
   };
   let prisma: {
-    product: { findFirst: jest.Mock };
+    product: { findFirst: jest.Mock; update: jest.Mock };
     productUnit: {
       findFirst: jest.Mock;
       findMany: jest.Mock;
       count: jest.Mock;
       update: jest.Mock;
+      create: jest.Mock;
     };
     location: { findFirst: jest.Mock };
     supplier: { findFirst: jest.Mock };
+    setTenantContext: jest.Mock;
     $transaction: jest.Mock;
   };
 
   beforeEach(async () => {
-    tx = {
-      productUnit: { create: jest.fn(), update: jest.fn() },
-      product: { update: jest.fn() },
-      stockMovement: { create: jest.fn() },
+    // Shared model mocks so write tests assert on tx.* and read tests on prisma.*.
+    const product = { findFirst: jest.fn().mockResolvedValue(buildProduct()), update: jest.fn() };
+    const productUnit = {
+      findFirst: jest.fn().mockResolvedValue(null),
+      findMany: jest.fn(),
+      count: jest.fn(),
+      update: jest.fn(),
+      create: jest.fn(),
     };
+    const stockMovement = { create: jest.fn() };
+
+    tx = { productUnit, product, stockMovement, $executeRaw: jest.fn() };
 
     prisma = {
-      product: { findFirst: jest.fn().mockResolvedValue(buildProduct()) },
-      productUnit: {
-        findFirst: jest.fn().mockResolvedValue(null),
-        findMany: jest.fn(),
-        count: jest.fn(),
-        update: jest.fn(),
-      },
+      product,
+      productUnit,
       location: { findFirst: jest.fn().mockResolvedValue({ id: LOCATION_ID }) },
       supplier: { findFirst: jest.fn() },
+      setTenantContext: jest.fn(),
       $transaction: jest.fn().mockImplementation((arg) =>
-        typeof arg === 'function' ? arg(tx) : Promise.resolve(arg),
+        typeof arg === 'function' ? arg(tx) : Promise.all(arg),
       ),
     };
 
@@ -207,7 +215,8 @@ describe('ProductUnitService', () => {
 
     it('returns paginated product units', async () => {
       const rows = [buildUnit()];
-      prisma.$transaction.mockResolvedValueOnce([rows, 11]);
+      prisma.productUnit.findMany.mockResolvedValue(rows);
+      prisma.productUnit.count.mockResolvedValue(11);
 
       const result = await service.getAllProductUnits(filter({ page: 2, limit: 10 }));
 
@@ -219,7 +228,8 @@ describe('ProductUnitService', () => {
     });
 
     it('hides sold and retired units from the default list', async () => {
-      prisma.$transaction.mockResolvedValueOnce([[], 0]);
+      prisma.productUnit.findMany.mockResolvedValue([]);
+      prisma.productUnit.count.mockResolvedValue(0);
 
       await service.getAllProductUnits(filter());
 
@@ -230,7 +240,8 @@ describe('ProductUnitService', () => {
     });
 
     it('builds product, location, status, and search filters', async () => {
-      prisma.$transaction.mockResolvedValueOnce([[], 0]);
+      prisma.productUnit.findMany.mockResolvedValue([]);
+      prisma.productUnit.count.mockResolvedValue(0);
 
       await service.getAllProductUnits(
         filter({

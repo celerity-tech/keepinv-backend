@@ -25,7 +25,7 @@ export class ProductsService {
 
     // `quantityOnHand` is intentionally never written here — it stays at the DB default (0)
     // and will be owned by the stock-movement ledger once that module lands.
-    const existing = await this.prisma.product.findUnique({ where: { sku } });
+    const existing = await this.prisma.product.findFirst({ where: { sku } });
     if (existing && !existing.isArchived) {
       throw new ConflictException('Product SKU already in use');
     }
@@ -50,16 +50,18 @@ export class ProductsService {
     const { page, limit } = filter;
     const where = this.buildWhere(filter);
 
-    const [data, total] = await this.prisma.$transaction([
-      this.prisma.product.findMany({
+    const { data, total } = await this.prisma.$transaction(async (tx) => {
+      await this.prisma.setTenantContext(tx);
+      const rows = await tx.product.findMany({
         where,
         include: PRODUCT_INCLUDE,
         orderBy: { name: 'asc' },
         skip: (page - 1) * limit,
         take: limit,
-      }),
-      this.prisma.product.count({ where }),
-    ]);
+      });
+      const count = await tx.product.count({ where });
+      return { data: rows, total: count };
+    });
 
     return {
       data,
@@ -148,14 +150,14 @@ export class ProductsService {
 
   // A unique value may only be reused by the same row (e.g. an archived row being reactivated).
   private async ensureSkuAvailable(sku: string, exceptId?: string): Promise<void> {
-    const owner = await this.prisma.product.findUnique({ where: { sku } });
+    const owner = await this.prisma.product.findFirst({ where: { sku } });
     if (owner && owner.id !== exceptId) {
       throw new ConflictException('Product SKU already in use');
     }
   }
 
   private async ensureBarcodeAvailable(barcode: string, exceptId?: string): Promise<void> {
-    const owner = await this.prisma.product.findUnique({ where: { barcode } });
+    const owner = await this.prisma.product.findFirst({ where: { barcode } });
     if (owner && owner.id !== exceptId) {
       throw new ConflictException('Product barcode already in use');
     }

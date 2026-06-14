@@ -88,13 +88,14 @@ export class PosService {
       ],
     };
 
-    const [products, units] = await this.prisma.$transaction([
-      this.prisma.product.findMany({
+    const { products, units } = await this.prisma.$transaction(async (tx) => {
+      await this.prisma.setTenantContext(tx);
+      const matchedProducts = await tx.product.findMany({
         where,
         orderBy: { name: 'asc' },
         take: query.limit,
-      }),
-      this.prisma.productUnit.findMany({
+      });
+      const matchedUnits = await tx.productUnit.findMany({
         where: unitWhere,
         include: { product: true },
         orderBy: [
@@ -104,8 +105,9 @@ export class PosService {
           { rfidTag: 'asc' },
         ],
         take: query.limit,
-      }),
-    ]);
+      });
+      return { products: matchedProducts, units: matchedUnits };
+    });
 
     return [
       ...products.map((product) => this.toProductSearchItem(product)),
@@ -141,6 +143,8 @@ export class PosService {
     const normalizedItems = this.normalizeCheckoutItems(body.items);
 
     return this.prisma.$transaction(async (tx) => {
+      await this.prisma.setTenantContext(tx);
+
       const cashier = await this.getCashier(userId, tx);
       const lines = await this.prepareSaleLines(normalizedItems, tx);
       const totals = this.calculateTotals(lines, body.amountTendered);
@@ -196,16 +200,18 @@ export class PosService {
     const { page, limit } = filter;
     const where = this.buildSaleWhere(filter);
 
-    const [data, total] = await this.prisma.$transaction([
-      this.prisma.sale.findMany({
+    const { data, total } = await this.prisma.$transaction(async (tx) => {
+      await this.prisma.setTenantContext(tx);
+      const rows = await tx.sale.findMany({
         where,
         include: POS_SALE_LIST_INCLUDE,
         orderBy: { completedAt: 'desc' },
         skip: (page - 1) * limit,
         take: limit,
-      }),
-      this.prisma.sale.count({ where }),
-    ]);
+      });
+      const count = await tx.sale.count({ where });
+      return { data: rows, total: count };
+    });
 
     return {
       data,
@@ -220,6 +226,8 @@ export class PosService {
 
   async voidSale(userId: string, id: string, body: VoidSaleDTO): Promise<PosSaleResult> {
     return this.prisma.$transaction(async (tx) => {
+      await this.prisma.setTenantContext(tx);
+
       const sale = await this.findSaleOrThrow(id, tx);
       if (sale.status === SaleStatus.VOIDED) {
         throw new BadRequestException('Sale has already been voided');

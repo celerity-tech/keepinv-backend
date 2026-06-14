@@ -33,5 +33,6 @@ COPY --from=builder /app ./
 
 EXPOSE 8000
 
-# Run migrations then start the app
-CMD ["sh", "-c", "until bunx prisma migrate deploy; do echo 'DB not ready, retrying in 5s...'; sleep 5; done && bun dist/src/main.js"]
+# Run migrations as the OWNER (DIRECT_URL; falls back to DATABASE_URL), then start the app
+# as the runtime role (DATABASE_URL = least-privilege app_user, so RLS is enforced).
+CMD ["sh", "-c", "until DATABASE_URL=\"${DIRECT_URL:-$DATABASE_URL}\" bunx prisma migrate deploy; do echo 'DB not ready, retrying in 5s...'; sleep 5; done && bun dist/src/main.js"]

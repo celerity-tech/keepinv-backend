@@ -23,25 +23,32 @@ const prisma = new PrismaClient({
 async function main() {
   const email = ADMIN_EMAIL.trim().toLowerCase();
 
-  const existing = await prisma.user.findUnique({ where: { email } });
-  if (existing) {
-    console.log(`Superadmin already exists: ${existing.email} (id=${existing.id}). Skipping.`);
-    return;
-  }
+  // Row-Level Security is enabled on users; the platform SUPER_ADMIN is org-less, so the
+  // lookup and insert must run with app.bypass_rls = 'on'. organization_id is left to its
+  // column default (current_setting('app.current_org_id'), unset here) and resolves to NULL.
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe(`SELECT set_config('app.bypass_rls', 'on', true)`);
 
-  const passwordHash = await bcrypt.hash(ADMIN_PASSWORD, 10);
+    const existing = await tx.user.findUnique({ where: { email } });
+    if (existing) {
+      console.log(`Superadmin already exists: ${existing.email} (id=${existing.id}). Skipping.`);
+      return;
+    }
 
-  const created = await prisma.user.create({
-    data: {
-      email,
-      password: passwordHash,
-      role: 'SUPER_ADMIN',
-    },
-    select: { id: true, email: true, role: true, createdAt: true },
+    const passwordHash = await bcrypt.hash(ADMIN_PASSWORD, 10);
+
+    const created = await tx.user.create({
+      data: {
+        email,
+        password: passwordHash,
+        role: 'SUPER_ADMIN',
+      },
+      select: { id: true, email: true, role: true, createdAt: true },
+    });
+
+    console.log(`Superadmin created: ${created.email} (id=${created.id}, role=${created.role})`);
+    console.log(`Default password: ${ADMIN_PASSWORD} — change it after first login.`);
   });
-
-  console.log(`Superadmin created: ${created.email} (id=${created.id}, role=${created.role})`);
-  console.log(`Default password: ${ADMIN_PASSWORD} — change it after first login.`);
 }
 
 main()

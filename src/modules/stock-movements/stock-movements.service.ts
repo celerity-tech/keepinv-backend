@@ -33,6 +33,8 @@ export class StockMovementsService {
     // returned balance is the trustworthy `quantityAfter` snapshot. A negative result throws,
     // which rolls the whole transaction back.
     return this.prisma.$transaction(async (tx) => {
+      await this.prisma.setTenantContext(tx);
+
       const updated = await tx.product.update({
         where: { id: productId },
         data: { quantityOnHand: { increment: delta } },
@@ -63,16 +65,18 @@ export class StockMovementsService {
     const { page, limit } = filter;
     const where = this.buildWhere(filter);
 
-    const [data, total] = await this.prisma.$transaction([
-      this.prisma.stockMovement.findMany({
+    const { data, total } = await this.prisma.$transaction(async (tx) => {
+      await this.prisma.setTenantContext(tx);
+      const rows = await tx.stockMovement.findMany({
         where,
         include: MOVEMENT_INCLUDE,
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
         take: limit,
-      }),
-      this.prisma.stockMovement.count({ where }),
-    ]);
+      });
+      const count = await tx.stockMovement.count({ where });
+      return { data: rows, total: count };
+    });
 
     return {
       data,
