@@ -1,11 +1,10 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { ClsService } from 'nestjs-cls';
 
 import * as bcrypt from 'bcrypt';
 
-import { UsersService } from '../users/users.service';
-import { TENANT_CLS_KEY, TenantContext } from '../../core/tenant/tenant.types';
+import { PrismaConnection } from '../../core/database/prisma-connection';
+import { PG_BYPASS_SETTING } from '../../core/tenant/tenant.types';
 import { LoginDTO } from './dto/login.dto';
 import type { AuthResult, JwtPayload, LoginUser } from './types/auth.types';
 
@@ -13,30 +12,30 @@ import type { AuthResult, JwtPayload, LoginUser } from './types/auth.types';
 // when the user lookup misses, so attackers can't enumerate accounts.
 const DUMMY_HASH = '$2b$10$CwTycUXWue0Thq9StjUM0uJ8.D6Z/3p1zVcr7e9LpO5z9C5jM1qWG';
 
+// Singleton (passport strategies depend on it and must be singletons). Uses the singleton
+// connection directly with an explicit RLS bypass — login is global-by-email and happens
+// before any tenant is known. It deliberately does NOT use the request-scoped PrismaService.
 @Injectable()
 export class AuthService {
   constructor(
-    private readonly usersService: UsersService,
+    private readonly connection: PrismaConnection,
     private readonly jwtService: JwtService,
-    private readonly cls: ClsService,
   ) {}
 
   async validateUser(loginDto: LoginDTO): Promise<LoginUser> {
-    // Login happens before any tenant is known, and email is globally unique, so the
-    // lookup must escape RLS. Bypass is scoped to this single (read-only) request.
-    if (this.cls.isActive()) {
-      this.cls.set<TenantContext>(TENANT_CLS_KEY, { systemBypass: true });
-    }
+    const email = loginDto.email.trim().toLowerCase();
 
-    const user = await this.usersService.findUserByEmail(loginDto.email);
+    const user = await this.connection.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config(${PG_BYPASS_SETTING}, 'on', true)`;
+      return tx.user.findUnique({ where: { email } });
+    });
+
     const isValid = await bcrypt.compare(loginDto.password, user?.password ?? DUMMY_HASH);
-
     if (!user || !isValid) {
       throw new UnauthorizedException('Invalid email or password');
     }
 
     const { password, ...safeUser } = user;
-
     return safeUser;
   }
 

@@ -1,6 +1,6 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
-import { Prisma, User } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 
 import { PrismaService } from '../../core/database/prisma.service';
 import { CreateUserDTO } from './dto/create-user.dto';
@@ -35,11 +35,6 @@ export class UsersService {
 
   async getAllUsers() {
     return this.prisma.user.findMany({ omit: { password: true } });
-  }
-
-  // Auth lookup: callers run this under a system-bypass context (email is globally unique).
-  async findUserByEmail(email: string): Promise<User | null> {
-    return this.prisma.user.findUnique({ where: { email: this.normalizeEmail(email) } });
   }
 
   async findUserById(id: string): Promise<SafeUser | null> {

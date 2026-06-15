@@ -1,11 +1,9 @@
 import { Module, ValidationPipe } from '@nestjs/common';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
-import { ClsModule } from 'nestjs-cls';
 
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
-import { TenantContextInterceptor } from './core/tenant/tenant-context.interceptor';
 import { RateLimitModule } from './core/security/rate-limit.module';
 import { HealthModule } from './core/health/health.module';
 import { PlatformModule } from './modules/platform/platform.module';
@@ -26,10 +24,6 @@ import { PosModule } from './modules/pos/pos.module';
 
 @Module({
   imports: [
-    ClsModule.forRoot({
-      global: true,
-      middleware: { mount: true },
-    }),
     RateLimitModule,
     HealthModule,
     PrismaModule,
@@ -63,11 +57,6 @@ import { PosModule } from './modules/pos/pos.module';
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
-    },
-    // Tenant context must be set before the response is shaped, so it is registered first.
-    {
-      provide: APP_INTERCEPTOR,
-      useClass: TenantContextInterceptor,
     },
     {
       provide: APP_INTERCEPTOR,
