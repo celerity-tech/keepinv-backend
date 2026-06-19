@@ -9,6 +9,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Length,
   Max,
   MaxLength,
   Min,
@@ -47,7 +48,7 @@ class ReceiptDetailsDTO {
 
   @IsOptional()
   @IsString()
-  @MaxLength(3)
+  @Length(3, 3)
   currency?: string;
 
   @IsOptional()
@@ -96,7 +97,7 @@ class ReceiptItemConfidenceDTO {
   @IsNumber({ maxDecimalPlaces: 4 })
   @Min(0)
   @Max(1)
-  name!: number;
+  productName!: number;
 
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 4 })

@@ -1,5 +1,6 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, Product, StockMovementType, Supplier } from '@prisma/client';
+import { randomUUID } from 'crypto';
 
 import { PrismaService } from '../../core/database/prisma.service';
 import { MIN_CONFIDENCE, ReceiptImportDTO, ReceiptImportItemDTO } from './dto/receipt-import.dto';
@@ -7,6 +8,12 @@ import { MIN_CONFIDENCE, ReceiptImportDTO, ReceiptImportItemDTO } from './dto/re
 type ReceiptImportAction = 'MATCH_PRODUCT' | 'CREATE_PRODUCT' | 'REJECT';
 
 type MatchedProduct = Pick<Product, 'id' | 'name' | 'sku' | 'barcode' | 'quantityOnHand'>;
+
+type ProductMatchMap = {
+  byBarcode: Map<string, MatchedProduct>;
+  bySku: Map<string, MatchedProduct>;
+  byName: Map<string, MatchedProduct>;
+};
 
 type PreviewItem = {
   line: number;
@@ -34,6 +41,11 @@ type ReceiptImportCommit = ReceiptImportPreview & {
   stockMovementsCreated: number;
 };
 
+type ProductResolution = {
+  product: MatchedProduct;
+  created: boolean;
+};
+
 const PRODUCT_SELECT = {
   id: true,
   name: true,
@@ -50,9 +62,8 @@ export class ReceiptImportsService {
     await this.validateDefaults(body);
 
     const supplier = await this.findSupplierByName(body.supplier.name);
-    const items = await Promise.all(
-      body.items.map(async (item, index) => this.previewItem(item, index + 1)),
-    );
+    const productMatches = await this.buildProductMatchMap(body.items);
+    const items = body.items.map((item, index) => this.previewItem(item, index + 1, productMatches));
 
     return {
       supplier: {
@@ -77,6 +88,7 @@ export class ReceiptImportsService {
 
     return this.prisma.$transaction(async (tx) => {
       await this.prisma.setTenantContext(tx);
+      await this.ensureIdempotencyKeyUnused(tx, body);
 
       const supplier = await this.findOrCreateSupplier(tx, body);
       let createdProducts = 0;
@@ -86,10 +98,9 @@ export class ReceiptImportsService {
       const committedItems: PreviewItem[] = [];
 
       for (const [index, item] of body.items.entries()) {
-        const product = await this.findOrCreateProduct(tx, item, body, supplier.id, index + 1);
-        const wasCreated = product.quantityOnHand === 0 && preview.items[index].action === 'CREATE_PRODUCT';
+        const { product, created } = await this.findOrCreateProduct(tx, item, body, supplier.id, index + 1);
 
-        if (wasCreated) createdProducts += 1;
+        if (created) createdProducts += 1;
         else matchedProducts += 1;
 
         const updated = await tx.product.update({
@@ -119,9 +130,9 @@ export class ReceiptImportsService {
         stockMovementsCreated += 1;
         committedItems.push({
           ...preview.items[index],
-          action: wasCreated ? 'CREATE_PRODUCT' : 'MATCH_PRODUCT',
+          action: created ? 'CREATE_PRODUCT' : 'MATCH_PRODUCT',
           matchedProduct: updated,
-          reason: wasCreated ? 'Product created from receipt line' : 'Product matched and stocked in',
+          reason: created ? 'Product created from receipt line' : 'Product matched and stocked in',
         });
       }
 
@@ -153,7 +164,7 @@ export class ReceiptImportsService {
     }
   }
 
-  private async previewItem(item: ReceiptImportItemDTO, line: number): Promise<PreviewItem> {
+  private previewItem(item: ReceiptImportItemDTO, line: number, matches: ProductMatchMap): PreviewItem {
     const normalizedName = this.normalizeName(item.normalizedName || item.rawName);
     const lowConfidenceFields = this.getLowConfidenceFields(item);
 
@@ -170,7 +181,7 @@ export class ReceiptImportsService {
       };
     }
 
-    const product = await this.findProduct(item, normalizedName);
+    const product = this.findProductInMap(item, normalizedName, matches);
 
     return {
       line,
@@ -186,10 +197,87 @@ export class ReceiptImportsService {
 
   private getLowConfidenceFields(item: ReceiptImportItemDTO): string[] {
     const fields: string[] = [];
-    if (item.confidence.name < MIN_CONFIDENCE) fields.push('name');
+    if (item.confidence.productName < MIN_CONFIDENCE) fields.push('productName');
     if (item.confidence.quantity < MIN_CONFIDENCE) fields.push('quantity');
     if (item.confidence.unitCost < MIN_CONFIDENCE) fields.push('unitCost');
     return fields;
+  }
+
+  private async buildProductMatchMap(items: ReceiptImportItemDTO[]): Promise<ProductMatchMap> {
+    const barcodes = [...new Set(items.map((item) => item.barcode).filter((value): value is string => Boolean(value)))];
+    const skus = [...new Set(items.map((item) => item.sku).filter((value): value is string => Boolean(value)))];
+    const names = [...new Set(items.map((item) => this.normalizeName(item.normalizedName || item.rawName)))];
+
+    const [barcodeMatches, skuMatches, nameMatches] = await Promise.all([
+      barcodes.length > 0
+        ? this.prisma.product.findMany({
+            where: { barcode: { in: barcodes }, isArchived: false },
+            select: PRODUCT_SELECT,
+          })
+        : [],
+      skus.length > 0
+        ? this.prisma.product.findMany({
+            where: { sku: { in: skus }, isArchived: false },
+            select: PRODUCT_SELECT,
+          })
+        : [],
+      names.length > 0
+        ? this.prisma.product.findMany({
+            where: { OR: names.map((name) => ({ name: { equals: name, mode: 'insensitive' } })), isArchived: false },
+            select: PRODUCT_SELECT,
+          })
+        : [],
+    ]);
+
+    return {
+      byBarcode: new Map(
+        barcodeMatches.flatMap((product): Array<[string, MatchedProduct]> =>
+          product.barcode ? [[product.barcode, product]] : [],
+        ),
+      ),
+      bySku: new Map(skuMatches.map((product): [string, MatchedProduct] => [product.sku, product])),
+      byName: new Map(
+        nameMatches.map((product): [string, MatchedProduct] => [
+          this.normalizeName(product.name).toLowerCase(),
+          product,
+        ]),
+      ),
+    };
+  }
+
+  private findProductInMap(
+    item: ReceiptImportItemDTO,
+    normalizedName: string,
+    matches: ProductMatchMap,
+  ): MatchedProduct | null {
+    if (item.barcode) {
+      const product = matches.byBarcode.get(item.barcode);
+      if (product) return product;
+    }
+
+    if (item.sku) {
+      const product = matches.bySku.get(item.sku);
+      if (product) return product;
+    }
+
+    return matches.byName.get(normalizedName.toLowerCase()) ?? null;
+  }
+
+  private async ensureIdempotencyKeyUnused(
+    tx: Prisma.TransactionClient,
+    body: ReceiptImportDTO,
+  ): Promise<void> {
+    const key = body.source?.idempotencyKey;
+    if (!key) return;
+
+    const existing = await tx.stockMovement.findFirst({
+      where: { note: { contains: `key=${key}` } },
+      select: { id: true },
+    });
+
+    if (existing) {
+      throw new ConflictException('Receipt import idempotency key was already processed');
+    }
   }
 
   private async findOrCreateSupplier(
@@ -216,26 +304,35 @@ export class ReceiptImportsService {
     body: ReceiptImportDTO,
     supplierId: string,
     line: number,
-  ): Promise<MatchedProduct> {
+  ): Promise<ProductResolution> {
     const normalizedName = this.normalizeName(item.normalizedName || item.rawName);
     const existing = await this.findProduct(item, normalizedName, tx);
-    if (existing) return existing;
+    if (existing) return { product: existing, created: false };
 
-    return tx.product.create({
-      data: {
-        name: normalizedName,
-        sku: item.sku || this.generateSku(normalizedName, body, line),
-        barcode: item.barcode,
-        brand: item.brand,
-        costPrice: item.unitCost,
-        sellingPrice: item.sellingPrice ?? this.resolveSellingPrice(item, body),
-        reorderPoint: body.defaults.reorderPoint,
-        categoryId: body.defaults.categoryId,
-        supplierId,
-        locationId: body.defaults.locationId,
-      },
-      select: PRODUCT_SELECT,
-    });
+    try {
+      const product = await tx.product.create({
+        data: {
+          name: normalizedName,
+          sku: item.sku || this.generateSku(normalizedName, body, line),
+          barcode: item.barcode,
+          brand: item.brand,
+          costPrice: item.unitCost,
+          sellingPrice: item.sellingPrice ?? this.resolveSellingPrice(item, body),
+          reorderPoint: body.defaults.reorderPoint,
+          categoryId: body.defaults.categoryId,
+          supplierId,
+          locationId: body.defaults.locationId,
+        },
+        select: PRODUCT_SELECT,
+      });
+
+      return { product, created: true };
+    } catch (error) {
+      if (this.isUniqueConstraintError(error)) {
+        throw new ConflictException('Receipt import generated a product SKU or barcode that already exists');
+      }
+      throw error;
+    }
   }
 
   private async findProduct(
@@ -282,9 +379,11 @@ export class ReceiptImportsService {
       .toUpperCase()
       .replace(/[^A-Z0-9]+/g, '-')
       .replace(/(^-|-$)/g, '')
-      .slice(0, 24);
+      .slice(0, 18);
     const receiptPart = body.receipt.receiptNumber?.replace(/[^A-Za-z0-9]/g, '').slice(-8) || 'RECEIPT';
-    return `RCPT-${receiptPart}-${line.toString().padStart(3, '0')}-${prefix || 'ITEM'}`.slice(0, 64);
+    const uniquePart = body.source?.idempotencyKey?.replace(/[^A-Za-z0-9]/g, '').slice(-8) || randomUUID().slice(0, 8);
+
+    return `RCPT-${receiptPart}-${line.toString().padStart(3, '0')}-${uniquePart}-${prefix || 'ITEM'}`.slice(0, 64);
   }
 
   private normalizeName(name: string): string {
@@ -301,5 +400,9 @@ export class ReceiptImportsService {
     ].filter(Boolean);
 
     return parts.join(' | ').slice(0, 255);
+  }
+
+  private isUniqueConstraintError(error: unknown): boolean {
+    return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
   }
 }
