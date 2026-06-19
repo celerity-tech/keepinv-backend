@@ -71,8 +71,9 @@ class ReceiptDetailsDTO {
 }
 
 class ReceiptImportDefaultsDTO {
+  @IsOptional()
   @IsUUID()
-  categoryId!: string;
+  categoryId?: string;
 
   @IsOptional()
   @IsUUID()
@@ -137,6 +138,10 @@ class ReceiptImportItemDTO {
   @IsString()
   @MaxLength(100)
   brand?: string;
+
+  @IsOptional()
+  @IsUUID()
+  categoryId?: string;
 
   @Type(() => Number)
   @IsInt()

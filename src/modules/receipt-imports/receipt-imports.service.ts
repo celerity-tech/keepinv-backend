@@ -63,7 +63,7 @@ export class ReceiptImportsService {
 
     const supplier = await this.findSupplierByName(body.supplier.name);
     const productMatches = await this.buildProductMatchMap(body.items);
-    const items = body.items.map((item, index) => this.previewItem(item, index + 1, productMatches));
+    const items = body.items.map((item, index) => this.previewItem(item, index + 1, productMatches, body));
 
     return {
       supplier: {
@@ -151,10 +151,21 @@ export class ReceiptImportsService {
   }
 
   private async validateDefaults(body: ReceiptImportDTO): Promise<void> {
-    const category = await this.prisma.category.findFirst({
-      where: { id: body.defaults.categoryId, isArchived: false },
-    });
-    if (!category) throw new NotFoundException('Default category not found');
+    const categoryIds = [
+      body.defaults.categoryId,
+      ...body.items.map((item) => item.categoryId),
+    ].filter((id): id is string => Boolean(id));
+    const uniqueCategoryIds = [...new Set(categoryIds)];
+
+    if (uniqueCategoryIds.length > 0) {
+      const categories = await this.prisma.category.findMany({
+        where: { id: { in: uniqueCategoryIds }, isArchived: false },
+        select: { id: true },
+      });
+      if (categories.length !== uniqueCategoryIds.length) {
+        throw new NotFoundException('One or more receipt import categories were not found');
+      }
+    }
 
     if (body.defaults.locationId) {
       const location = await this.prisma.location.findFirst({
@@ -164,7 +175,12 @@ export class ReceiptImportsService {
     }
   }
 
-  private previewItem(item: ReceiptImportItemDTO, line: number, matches: ProductMatchMap): PreviewItem {
+  private previewItem(
+    item: ReceiptImportItemDTO,
+    line: number,
+    matches: ProductMatchMap,
+    body: ReceiptImportDTO,
+  ): PreviewItem {
     const normalizedName = this.normalizeName(item.normalizedName || item.rawName);
     const lowConfidenceFields = this.getLowConfidenceFields(item);
 
@@ -182,6 +198,19 @@ export class ReceiptImportsService {
     }
 
     const product = this.findProductInMap(item, normalizedName, matches);
+
+    if (!product && !this.resolveCategoryId(item, body)) {
+      return {
+        line,
+        rawName: item.rawName,
+        normalizedName,
+        quantity: item.quantity,
+        unitCost: item.unitCost,
+        action: 'REJECT',
+        matchedProduct: null,
+        reason: 'Missing categoryId for new product',
+      };
+    }
 
     return {
       line,
@@ -309,6 +338,11 @@ export class ReceiptImportsService {
     const existing = await this.findProduct(item, normalizedName, tx);
     if (existing) return { product: existing, created: false };
 
+    const categoryId = this.resolveCategoryId(item, body);
+    if (!categoryId) {
+      throw new BadRequestException('Missing categoryId for new product');
+    }
+
     try {
       const product = await tx.product.create({
         data: {
@@ -319,7 +353,7 @@ export class ReceiptImportsService {
           costPrice: item.unitCost,
           sellingPrice: item.sellingPrice ?? this.resolveSellingPrice(item, body),
           reorderPoint: body.defaults.reorderPoint,
-          categoryId: body.defaults.categoryId,
+          categoryId,
           supplierId,
           locationId: body.defaults.locationId,
         },
@@ -366,6 +400,10 @@ export class ReceiptImportsService {
     return this.prisma.supplier.findFirst({
       where: { name: { equals: name, mode: 'insensitive' }, isArchived: false },
     });
+  }
+
+  private resolveCategoryId(item: ReceiptImportItemDTO, body: ReceiptImportDTO): string | undefined {
+    return item.categoryId ?? body.defaults.categoryId;
   }
 
   private resolveSellingPrice(item: ReceiptImportItemDTO, body: ReceiptImportDTO): number {
