@@ -23,6 +23,7 @@ import { ProductUnitModule } from './modules/product-unit/product-unit.module';
 import { StockMovementsModule } from './modules/stock-movements/stock-movements.module';
 import { InventoryAuditModule } from './modules/inventory-audit/inventory-audit.module';
 import { PosModule } from './modules/pos/pos.module';
+import { ReceiptImportsModule } from './modules/receipt-imports/receipt-imports.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { PosModule } from './modules/pos/pos.module';
     StockMovementsModule,
     InventoryAuditModule,
     PosModule,
+    ReceiptImportsModule,
     PlatformModule,
   ],
   controllers: [AppController],
