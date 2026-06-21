@@ -1,13 +1,11 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
 import { Supplier } from '@prisma/client';
 
-import { PassportJwtGuard } from '../auth/guards/passport-jwt.guard';
 import { SuppliersService } from './suppliers.service';
 import { CreateSupplierDTO } from './dto/create-supplier.dto';
 import { UpdateSupplierDTO } from './dto/update-supplier.dto';
 
 @Controller('suppliers')
-@UseGuards(PassportJwtGuard)
 export class SuppliersController {
   constructor(private readonly suppliersService: SuppliersService) {}
 

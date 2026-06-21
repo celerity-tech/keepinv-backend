@@ -1,13 +1,11 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { Organization, Prisma, RoleEnum } from '@prisma/client';
-import * as bcrypt from 'bcrypt';
+import { Organization, Prisma } from '@prisma/client';
 
-import { PrismaService } from '../../core/database/prisma.service';
+import { authPrisma } from '../../core/auth/auth.client';
+import { createCredentialUser, OrgRole, provisionOrganizationUser } from '../../core/auth/provisioning';
 import type { SafeUser } from '../users/types/users.types';
 import { CreateOrganizationDTO } from './dto/create-organization.dto';
 import { CreateOrgUserDTO } from './dto/create-org-user.dto';
-
-const BCRYPT_ROUNDS = 10;
 
 export interface ProvisionResult {
   organization: Organization;
@@ -16,75 +14,41 @@ export interface ProvisionResult {
 
 @Injectable()
 export class PlatformService {
-  constructor(private readonly prisma: PrismaService) {}
-
   // Manual tenant provisioning. SUPER_ADMIN-only (enforced at the controller). Creates the
-  // organization and its first ADMIN atomically, escaping RLS via a system-bypass context.
+  // organization and its first owner — a Better Auth credential user + an 'owner' membership —
+  // atomically on the identity tables (which are excluded from tenant RLS).
   async createOrganization(body: CreateOrganizationDTO): Promise<ProvisionResult> {
     const slug = body.slug ?? this.slugify(body.name);
-    const email = body.admin.email.trim().toLowerCase();
-    const passwordHash = await bcrypt.hash(body.admin.password, BCRYPT_ROUNDS);
 
-    return this.prisma.$transaction(async (tx) => {
-      await this.prisma.setTenantContext(tx, { systemBypass: true });
+    try {
+      return await authPrisma.$transaction(async (tx) => {
+        const slugTaken = await tx.organization.findUnique({ where: { slug } });
+        if (slugTaken) throw new ConflictException('Organization slug already in use');
 
-      const slugTaken = await tx.organization.findUnique({ where: { slug } });
-      if (slugTaken) throw new ConflictException('Organization slug already in use');
+        const organization = await tx.organization.create({ data: { name: body.name, slug } });
+        const admin = await createCredentialUser(tx, body.admin);
+        await tx.member.create({
+          data: { organizationId: organization.id, userId: admin.id, role: 'owner' },
+        });
 
-      const emailTaken = await tx.user.findUnique({ where: { email } });
-      if (emailTaken) throw new ConflictException('Email already in use');
-
-      const organization = await tx.organization.create({
-        data: { name: body.name, slug },
+        return { organization, admin };
       });
-
-      const admin = await tx.user.create({
-        data: {
-          firstName: body.admin.firstName,
-          lastName: body.admin.lastName,
-          email,
-          password: passwordHash,
-          role: RoleEnum.ADMIN,
-          organizationId: organization.id,
-        },
-        omit: { password: true },
-      });
-
-      return { organization, admin };
-    });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new ConflictException('Email or slug already in use');
+      }
+      throw error;
+    }
   }
 
-  // Adds an ADMIN/USER account to an existing tenant on request. SUPER_ADMIN-only at the
-  // controller; the new user is bound to the target organization via system-bypass.
+  // Adds an account to an existing tenant on request. SUPER_ADMIN-only at the controller.
+  // role maps to the organization member role: ADMIN -> 'admin', USER (default) -> 'member'.
   async createOrganizationUser(organizationId: string, body: CreateOrgUserDTO): Promise<SafeUser> {
-    const email = body.email.trim().toLowerCase();
-    const passwordHash = await bcrypt.hash(body.password, BCRYPT_ROUNDS);
+    const organization = await authPrisma.organization.findUnique({ where: { id: organizationId } });
+    if (!organization) throw new NotFoundException('Organization not found');
 
-    return this.prisma.$transaction(async (tx) => {
-      await this.prisma.setTenantContext(tx, { systemBypass: true });
-
-      const organization = await tx.organization.findUnique({ where: { id: organizationId } });
-      if (!organization) throw new NotFoundException('Organization not found');
-
-      try {
-        return await tx.user.create({
-          data: {
-            firstName: body.firstName,
-            lastName: body.lastName,
-            email,
-            password: passwordHash,
-            role: body.role ?? RoleEnum.USER,
-            organizationId,
-          },
-          omit: { password: true },
-        });
-      } catch (error) {
-        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-          throw new ConflictException('Email already in use');
-        }
-        throw error;
-      }
-    });
+    const role: OrgRole = body.role === 'ADMIN' ? 'admin' : 'member';
+    return provisionOrganizationUser(organizationId, body, role);
   }
 
   private slugify(name: string): string {

@@ -10,18 +10,24 @@ datasource db {
   provider = "postgresql"
 }
 
-// Tenant boundary. Every tenant-owned row carries organizationId; Postgres RLS
-// enforces isolation. SUPER_ADMIN platform users have a null organizationId.
+// Tenant boundary. Business rows carry organizationId and are isolated by Postgres RLS,
+// scoped to the active organization from the Better Auth session. Membership lives in
+// `members` (Better Auth organization plugin); `users.organizationId` is legacy.
 model Organization {
   id       String  @id @default(uuid())
   name     String
   slug     String  @unique
+  logo     String? // Better Auth organization plugin
+  metadata String? // Better Auth organization plugin
   isActive Boolean @default(true) @map("is_active")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  users               User[]
+  members     Member[]
+  invitations Invitation[]
+
+  users               User[] // legacy direct membership (pre-Better-Auth)
   categories          Category[]
   suppliers           Supplier[]
   supplierLinks       SupplierLink[]
@@ -37,22 +43,37 @@ model Organization {
   @@map("organizations")
 }
 
+// Better Auth core user. `role` (admin plugin) is a system-level role: 'admin' = platform
+// SUPER_ADMIN (only the operator), everyone else 'user'. Organization-level authority lives
+// on `members.role` (owner/admin/member). password/organizationId are legacy columns kept so
+// existing data and references keep working.
 model User {
-  id         String   @id @default(uuid())
-  firstName  String?  @map("first_name")
-  lastName   String?  @map("last_name")
-  email      String   @unique
-  password   String
-  role       RoleEnum @default(ADMIN)
-  isArchived Boolean  @default(false) @map("is_archived")
+  id            String    @id @default(uuid())
+  name          String?
+  email         String    @unique
+  emailVerified Boolean   @default(false) @map("is_email_verified")
+  image         String?   @map("image_url")
 
-  // Nullable: SUPER_ADMIN platform operators are not bound to a tenant.
-  organizationId String?       @default(dbgenerated("current_setting('app.current_org_id', true)")) @map("organization_id")
+  // admin plugin (system-level)
+  role       String?   @default("user")
+  banned     Boolean?  @default(false)
+  banReason  String?   @map("ban_reason")
+  banExpires DateTime? @map("ban_expires")
+
+  // legacy (superseded by Account.password and Member)
+  password   String? // legacy bcrypt hash; credential now stored in Account
+  isArchived Boolean @default(false) @map("is_archived")
+
+  organizationId String?       @map("organization_id")
   organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  accounts        Account[]
+  sessions        Session[]
+  members         Member[]
+  invitations     Invitation[]
   stockMovements  StockMovement[]
   inventoryAudits InventoryAudit[]
   sales           Sale[]           @relation("SaleCashier")
@@ -62,10 +83,105 @@ model User {
   @@map("users")
 }
 
-enum RoleEnum {
-  SUPER_ADMIN
-  ADMIN
-  USER
+// Better Auth: credentials + linked accounts. Email/password lives here with
+// providerId='credential', accountId=userId, password=<bcrypt hash>.
+model Account {
+  id                    String    @id @default(uuid())
+  accountId             String    @map("account_id")
+  providerId            String    @map("provider_id")
+  accessToken           String?   @map("access_token")
+  refreshToken          String?   @map("refresh_token")
+  idToken               String?   @map("id_token")
+  accessTokenExpiresAt  DateTime? @map("access_token_expires_at")
+  refreshTokenExpiresAt DateTime? @map("refresh_token_expires_at")
+  scope                 String?
+  password              String?
+
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@map("accounts")
+}
+
+// Better Auth: session. activeOrganizationId is the tenant for RLS on business routes.
+model Session {
+  id                   String   @id @default(uuid())
+  expiresAt            DateTime @map("expires_at")
+  token                String   @unique
+  ipAddress            String?  @map("ip_address")
+  userAgent            String?  @map("user_agent")
+  activeOrganizationId String?  @map("active_organization_id")
+
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+// Better Auth: email verification / password-reset tokens.
+model Verification {
+  id         String   @id @default(uuid())
+  identifier String
+  value      String
+  expiresAt  DateTime @map("expires_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([identifier])
+  @@map("verifications")
+}
+
+// Better Auth organization plugin: user<->organization membership (replaces the legacy
+// users.organizationId). role is owner/admin/member.
+model Member {
+  id   String @id @default(uuid())
+  role String @default("member")
+
+  organizationId String       @map("organization_id")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([organizationId, userId])
+  @@index([organizationId])
+  @@index([userId])
+  @@map("members")
+}
+
+// Better Auth organization plugin: pending invitations (unused for now; provisioning is
+// operator-driven, but the table is required by the plugin schema).
+model Invitation {
+  id        String   @id @default(uuid())
+  email     String
+  role      String?
+  status    String   @default("pending")
+  expiresAt DateTime @map("expires_at")
+
+  inviterId String @map("inviter_id")
+  user      User   @relation(fields: [inviterId], references: [id], onDelete: Cascade)
+
+  organizationId String       @map("organization_id")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([organizationId])
+  @@index([email])
+  @@map("invitations")
 }
 
 // Flat product category (e.g. "Beverages", "Electronics").

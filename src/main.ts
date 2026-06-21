@@ -7,7 +7,9 @@ import { AppModule } from './app.module';
 import { env } from './core/config/env.config';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // bodyParser:false hands the raw request body to Better Auth; @thallesp/nestjs-better-auth
+  // re-adds the default body parsers for all non-auth routes.
+  const app = await NestFactory.create(AppModule, { bodyParser: false });
 
   app.setGlobalPrefix('api');
   app.enableVersioning({

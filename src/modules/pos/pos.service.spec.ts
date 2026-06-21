@@ -63,9 +63,8 @@ const firstCallArg = <T>(mock: jest.Mock): T => {
 const cashier = {
   id: USER_ID,
   email: 'cashier@example.test',
-  firstName: 'Store',
-  lastName: 'Cashier',
-  role: 'USER',
+  name: 'Store Cashier',
+  role: 'user',
 };
 
 const buildProduct = (overrides: Partial<Product> = {}): Product => ({

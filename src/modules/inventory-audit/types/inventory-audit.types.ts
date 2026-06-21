@@ -17,8 +17,7 @@ export const INVENTORY_AUDIT_INCLUDE = {
     select: {
       id: true,
       email: true,
-      firstName: true,
-      lastName: true,
+      name: true,
       role: true,
     },
   },

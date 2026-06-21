@@ -1,12 +1,17 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { PaymentMethod, RoleEnum } from '@prisma/client';
+import { PaymentMethod } from '@prisma/client';
 
 import { PosController } from './pos.controller';
 import { PosService } from './pos.service';
 import { CheckoutPosDTO } from './dto/checkout-pos.dto';
 import { FilterSalesDTO } from './dto/filter-sales.dto';
 import { SearchPosItemsDTO } from './dto/search-pos-items.dto';
-import type { AuthenticatedUser } from '../auth/types/auth.types';
+import type { UserSession } from '@thallesp/nestjs-better-auth';
+
+const session = {
+  user: { id: 'user-1', email: 'cashier@example.test', role: 'user' },
+  session: { activeOrganizationId: 'org-1' },
+} as unknown as UserSession;
 
 type PosServiceMock = Record<
   'searchItems' | 'checkout' | 'getAllSales' | 'getSale' | 'voidSale',
@@ -41,20 +46,15 @@ describe('PosController', () => {
   });
 
   it('delegates checkout with the authenticated cashier id', async () => {
-    const user: AuthenticatedUser = {
-      id: 'user-1',
-      email: 'cashier@example.test',
-      role: RoleEnum.USER,
-    };
     const body: CheckoutPosDTO = {
       items: [{ productId: 'product-1', quantity: 1 }],
       paymentMethod: PaymentMethod.CASH,
       amountTendered: 100,
     };
 
-    await controller.checkout(user, body);
+    await controller.checkout(session, body);
 
-    expect(service.checkout).toHaveBeenCalledWith(user.id, body);
+    expect(service.checkout).toHaveBeenCalledWith(session.user.id, body);
   });
 
   it('delegates sale list and detail reads', async () => {
@@ -67,15 +67,10 @@ describe('PosController', () => {
   });
 
   it('delegates voiding with the authenticated cashier id', async () => {
-    const user: AuthenticatedUser = {
-      id: 'user-1',
-      email: 'cashier@example.test',
-      role: RoleEnum.USER,
-    };
     const body = { reason: 'Cashier mistake' };
 
-    await controller.voidSale(user, 'sale-1', body);
+    await controller.voidSale(session, 'sale-1', body);
 
-    expect(service.voidSale).toHaveBeenCalledWith(user.id, 'sale-1', body);
+    expect(service.voidSale).toHaveBeenCalledWith(session.user.id, 'sale-1', body);
   });
 });

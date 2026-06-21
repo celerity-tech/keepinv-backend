@@ -9,15 +9,12 @@ import {
   ValidateNested,
 } from 'class-validator';
 
-// Initial ADMIN account handed to the client on purchase.
+// Initial owner account handed to the client on purchase.
 export class ProvisionAdminDTO {
-  @IsOptional()
   @IsString()
-  firstName?: string;
-
-  @IsOptional()
-  @IsString()
-  lastName?: string;
+  @MinLength(1)
+  @MaxLength(120)
+  name!: string;
 
   @Transform(({ value }) => (typeof value === 'string' ? value.trim().toLowerCase() : value))
   @IsEmail()

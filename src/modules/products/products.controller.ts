@@ -8,11 +8,9 @@ import {
   Patch,
   Post,
   Query,
-  UseGuards,
 } from '@nestjs/common';
 import { Product } from '@prisma/client';
 
-import { PassportJwtGuard } from '../auth/guards/passport-jwt.guard';
 import { PaginatedResponse } from '../../common/responses/paginated-api.response';
 import { ProductsService } from './products.service';
 import { CreateProductDTO } from './dto/create-product.dto';
@@ -20,7 +18,6 @@ import { UpdateProductDTO } from './dto/update-product.dto';
 import { FilterProductsDTO } from './dto/filter-products.dto';
 
 @Controller('products')
-@UseGuards(PassportJwtGuard)
 export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 

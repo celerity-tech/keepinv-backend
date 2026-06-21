@@ -3,15 +3,14 @@ import { StockMovementType } from '@prisma/client';
 
 import { StockMovementsController } from './stock-movements.controller';
 import { StockMovementsService } from './stock-movements.service';
-import { AuthenticatedUser } from '../auth/types/auth.types';
+import type { UserSession } from '@thallesp/nestjs-better-auth';
 import { CreateStockMovementDTO } from './dto/create-stock-movement.dto';
 import { FilterStockMovementsDTO } from './dto/filter-stock-movements.dto';
 
-const user: AuthenticatedUser = {
-  id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-  email: 'admin@example.com',
-  role: 'ADMIN',
-};
+const session = {
+  user: { id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', email: 'admin@example.com', role: 'user' },
+  session: { activeOrganizationId: 'org-1' },
+} as unknown as UserSession;
 
 describe('StockMovementsController', () => {
   let controller: StockMovementsController;
@@ -43,9 +42,9 @@ describe('StockMovementsController', () => {
       quantity: 5,
     } as CreateStockMovementDTO;
 
-    await controller.recordStockMovement(user, body);
+    await controller.recordStockMovement(session, body);
 
-    expect(service.recordStockMovement).toHaveBeenCalledWith(user.id, body);
+    expect(service.recordStockMovement).toHaveBeenCalledWith(session.user.id, body);
   });
 
   it('delegates getAllStockMovements with the filter query', async () => {

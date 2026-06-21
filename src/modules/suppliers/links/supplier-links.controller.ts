@@ -1,13 +1,11 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
 import { SupplierLink } from '@prisma/client';
 
-import { PassportJwtGuard } from '../../auth/guards/passport-jwt.guard';
 import { SupplierLinksService } from './supplier-links.service';
 import { CreateSupplierLinkDTO } from './dto/create-supplier-link.dto';
 import { UpdateSupplierLinkDTO } from './dto/update-supplier-link.dto';
 
 @Controller('suppliers/:supplierId/links')
-@UseGuards(PassportJwtGuard)
 export class SupplierLinksController {
   constructor(private readonly supplierLinksService: SupplierLinksService) {}
 

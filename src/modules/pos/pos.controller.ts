@@ -6,13 +6,11 @@ import {
   ParseUUIDPipe,
   Post,
   Query,
-  UseGuards,
 } from '@nestjs/common';
 
+import { Session, type UserSession } from '@thallesp/nestjs-better-auth';
+
 import { PaginatedResponse } from '../../common/responses/paginated-api.response';
-import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { PassportJwtGuard } from '../auth/guards/passport-jwt.guard';
-import type { AuthenticatedUser } from '../auth/types/auth.types';
 import { CheckoutPosDTO } from './dto/checkout-pos.dto';
 import { FilterSalesDTO } from './dto/filter-sales.dto';
 import { ListProductUnitsDTO } from './dto/list-product-units.dto';
@@ -22,7 +20,6 @@ import { PosService } from './pos.service';
 import { PosSaleListItem, PosSaleResult, PosSearchItem } from './types/pos.types';
 
 @Controller('pos')
-@UseGuards(PassportJwtGuard)
 export class PosController {
   constructor(private readonly posService: PosService) {}
 
@@ -41,10 +38,10 @@ export class PosController {
 
   @Post('checkout')
   async checkout(
-    @CurrentUser() user: AuthenticatedUser,
+    @Session() session: UserSession,
     @Body() body: CheckoutPosDTO,
   ): Promise<PosSaleResult> {
-    return this.posService.checkout(user.id, body);
+    return this.posService.checkout(session.user.id, body);
   }
 
   @Get('sales')
@@ -61,10 +58,10 @@ export class PosController {
 
   @Post('sales/:id/void')
   async voidSale(
-    @CurrentUser() user: AuthenticatedUser,
+    @Session() session: UserSession,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: VoidSaleDTO,
   ): Promise<PosSaleResult> {
-    return this.posService.voidSale(user.id, id, body);
+    return this.posService.voidSale(session.user.id, id, body);
   }
 }

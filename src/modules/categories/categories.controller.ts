@@ -1,13 +1,11 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
 import { Category } from '@prisma/client';
 
-import { PassportJwtGuard } from '../auth/guards/passport-jwt.guard';
 import { CategoriesService } from './categories.service';
 import { CreateCategoryDTO } from './dto/create-category.dto';
 import { UpdateCategoryDTO } from './dto/update-category.dto';
 
 @Controller('categories')
-@UseGuards(PassportJwtGuard)
 export class CategoriesController {
   constructor(private readonly categoriesService: CategoriesService) {}
 

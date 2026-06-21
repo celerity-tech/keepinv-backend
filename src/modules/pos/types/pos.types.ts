@@ -3,8 +3,7 @@ import type { PaymentMethod, Prisma, SaleStatus } from '@prisma/client';
 export const POS_USER_SELECT = {
   id: true,
   email: true,
-  firstName: true,
-  lastName: true,
+  name: true,
   role: true,
 } satisfies Prisma.UserSelect;
 

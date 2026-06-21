@@ -8,12 +8,10 @@ import {
   Patch,
   Post,
   Query,
-  UseGuards,
 } from '@nestjs/common';
 
-import { PassportJwtGuard } from '../auth/guards/passport-jwt.guard';
-import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import type { AuthenticatedUser } from '../auth/types/auth.types';
+import { Session, type UserSession } from '@thallesp/nestjs-better-auth';
+
 import { PaginatedResponse } from '../../common/responses/paginated-api.response';
 import { ProductUnitService } from './product-unit.service';
 import { RegisterProductUnitsDTO } from './dto/register-product-units.dto';
@@ -29,16 +27,15 @@ import {
 } from './types/product-unit.types';
 
 @Controller('product-units')
-@UseGuards(PassportJwtGuard)
 export class ProductUnitController {
   constructor(private readonly productUnitService: ProductUnitService) {}
 
   @Post('register')
   async registerProductUnits(
-    @CurrentUser() user: AuthenticatedUser,
+    @Session() session: UserSession,
     @Body() body: RegisterProductUnitsDTO,
   ): Promise<RegisterProductUnitsResult> {
-    return this.productUnitService.registerProductUnits(user.id, body);
+    return this.productUnitService.registerProductUnits(session.user.id, body);
   }
 
   @Get()
@@ -66,20 +63,20 @@ export class ProductUnitController {
 
   @Post(':id/status')
   async changeProductUnitStatus(
-    @CurrentUser() user: AuthenticatedUser,
+    @Session() session: UserSession,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: ChangeProductUnitStatusDTO,
   ): Promise<ProductUnitStatusChangeResult> {
-    return this.productUnitService.changeProductUnitStatus(user.id, id, body);
+    return this.productUnitService.changeProductUnitStatus(session.user.id, id, body);
   }
 
   @Delete(':id')
   async retireProductUnit(
-    @CurrentUser() user: AuthenticatedUser,
+    @Session() session: UserSession,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: RetireProductUnitDTO = {},
   ): Promise<ProductUnitStatusChangeResult> {
-    return this.productUnitService.retireProductUnit(user.id, id, body);
+    return this.productUnitService.retireProductUnit(session.user.id, id, body);
   }
 
   @Get(':id')

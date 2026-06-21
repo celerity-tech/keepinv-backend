@@ -2,17 +2,19 @@ import { Module, ValidationPipe } from '@nestjs/common';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 
+import { AuthModule } from '@thallesp/nestjs-better-auth';
+
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import { RateLimitModule } from './core/security/rate-limit.module';
 import { HealthModule } from './core/health/health.module';
+import { auth } from './core/auth/auth';
 import { PlatformModule } from './modules/platform/platform.module';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './core/database/prisma.module';
 import { UsersModule } from './modules/users/users.module';
-import { AuthModule } from './modules/auth/auth.module';
 import { CategoriesModule } from './modules/categories/categories.module';
 import { SuppliersModule } from './modules/suppliers/suppliers.module';
 import { LocationsModule } from './modules/locations/locations.module';
@@ -24,11 +26,11 @@ import { PosModule } from './modules/pos/pos.module';
 
 @Module({
   imports: [
+    AuthModule.forRoot({ auth }),
     RateLimitModule,
     HealthModule,
     PrismaModule,
     UsersModule,
-    AuthModule,
     CategoriesModule,
     SuppliersModule,
     LocationsModule,

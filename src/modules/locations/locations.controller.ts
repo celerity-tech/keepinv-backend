@@ -1,13 +1,11 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
 import { Location } from '@prisma/client';
 
-import { PassportJwtGuard } from '../auth/guards/passport-jwt.guard';
 import { LocationsService } from './locations.service';
 import { CreateLocationDTO } from './dto/create-location.dto';
 import { UpdateLocationDTO } from './dto/update-location.dto';
 
 @Controller('locations')
-@UseGuards(PassportJwtGuard)
 export class LocationsController {
   constructor(private readonly locationsService: LocationsService) {}
 

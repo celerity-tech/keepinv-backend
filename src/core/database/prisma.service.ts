@@ -1,7 +1,7 @@
 import { Inject, Injectable, Scope } from '@nestjs/common';
 import { REQUEST } from '@nestjs/core';
 
-import { PrismaClient, RoleEnum } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 
 import { PrismaConnection } from './prisma-connection';
 import { PG_BYPASS_SETTING, PG_ORG_SETTING, TenantContext } from '../tenant/tenant.types';
@@ -9,8 +9,12 @@ import { PG_BYPASS_SETTING, PG_ORG_SETTING, TenantContext } from '../tenant/tena
 // Any client capable of running raw SQL — the base client or an interactive tx client.
 type RawCapableClient = Pick<PrismaClient, '$executeRaw'>;
 
-interface RequestWithUser {
-  user?: { id?: string; role?: RoleEnum; organizationId?: string | null };
+// Shape attached to the request by @thallesp/nestjs-better-auth's global AuthGuard.
+interface RequestWithSession {
+  session?: {
+    session?: { activeOrganizationId?: string | null };
+    user?: { id?: string; role?: string | string[] | null };
+  } | null;
 }
 
 // Methods served by the singleton connection (transactions/raw/lifecycle). $transaction is
@@ -44,7 +48,7 @@ export interface PrismaService extends PrismaClient {}
 export class PrismaService {
   constructor(
     private readonly connection: PrismaConnection,
-    @Inject(REQUEST) private readonly request: RequestWithUser,
+    @Inject(REQUEST) private readonly request: RequestWithSession,
   ) {
     const base = connection;
     const self = this;
@@ -89,15 +93,17 @@ export class PrismaService {
     });
   }
 
-  // Resolves the RLS session-variable values from the current request (or explicit overrides
-  // for system tasks such as login lookups, provisioning and seeding).
+  // Resolves the RLS session-variable values from the Better Auth session's active organization
+  // (or explicit overrides for system tasks such as provisioning and seeding). Bypass is NEVER
+  // granted automatically per request — even a platform admin stays tenant-scoped on normal
+  // routes; only explicit platform-admin code paths pass systemBypass: true.
   private resolveGuc(overrides?: Pick<TenantContext, 'organizationId' | 'systemBypass'>): {
     orgId: string;
     bypass: string;
   } {
-    const user = this.request?.user;
-    const organizationId = overrides?.organizationId ?? user?.organizationId ?? '';
-    const systemBypass = overrides?.systemBypass ?? user?.role === RoleEnum.SUPER_ADMIN;
+    const activeOrganizationId = this.request?.session?.session?.activeOrganizationId ?? null;
+    const organizationId = overrides?.organizationId ?? activeOrganizationId ?? '';
+    const systemBypass = overrides?.systemBypass ?? false;
     return { orgId: organizationId ?? '', bypass: systemBypass ? 'on' : 'off' };
   }
 

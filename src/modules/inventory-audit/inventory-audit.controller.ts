@@ -6,12 +6,10 @@ import {
   ParseUUIDPipe,
   Post,
   Query,
-  UseGuards,
 } from '@nestjs/common';
 
-import { PassportJwtGuard } from '../auth/guards/passport-jwt.guard';
-import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import type { AuthenticatedUser } from '../auth/types/auth.types';
+import { Session, type UserSession } from '@thallesp/nestjs-better-auth';
+
 import { PaginatedResponse } from '../../common/responses/paginated-api.response';
 import { InventoryAuditService } from './inventory-audit.service';
 import { CreateInventoryAuditDTO } from './dto/create-inventory-audit.dto';
@@ -26,16 +24,15 @@ import {
 } from './types/inventory-audit.types';
 
 @Controller('inventory-audits')
-@UseGuards(PassportJwtGuard)
 export class InventoryAuditController {
   constructor(private readonly inventoryAuditService: InventoryAuditService) {}
 
   @Post()
   async createInventoryAudit(
-    @CurrentUser() user: AuthenticatedUser,
+    @Session() session: UserSession,
     @Body() body: CreateInventoryAuditDTO,
   ): Promise<InventoryAuditReport> {
-    return this.inventoryAuditService.createInventoryAudit(user.id, body);
+    return this.inventoryAuditService.createInventoryAudit(session.user.id, body);
   }
 
   @Get()

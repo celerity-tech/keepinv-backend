@@ -1,14 +1,15 @@
 import 'dotenv/config';
-import * as bcrypt from 'bcrypt';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
+import { hashPassword } from 'better-auth/crypto';
 import { Pool } from 'pg';
 
-// Default bootstrap superadmin. Change the password via the running app
-// (or delete the row and re-seed) immediately after first login. Do NOT
-// deploy with these defaults in place.
+// Default bootstrap platform admin (Better Auth system role 'admin' = SUPER_ADMIN). Org-less.
+// Change the password via the running app immediately after first login. Do NOT deploy with
+// these defaults in place.
 const ADMIN_EMAIL = 'admin@geoplan.ph';
 const ADMIN_PASSWORD = 'admin123';
+const ADMIN_NAME = 'Platform Admin';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
@@ -23,30 +24,29 @@ const prisma = new PrismaClient({
 async function main() {
   const email = ADMIN_EMAIL.trim().toLowerCase();
 
-  // Row-Level Security is enabled on users; the platform SUPER_ADMIN is org-less, so the
-  // lookup and insert must run with app.bypass_rls = 'on'. organization_id is left to its
-  // column default (current_setting('app.current_org_id'), unset here) and resolves to NULL.
+  // Identity tables (users/accounts) are not under tenant RLS, so no bypass is needed here.
+  const existing = await prisma.user.findUnique({ where: { email } });
+  if (existing) {
+    console.log(`Admin already exists: ${existing.email} (id=${existing.id}). Skipping.`);
+    return;
+  }
+
   await prisma.$transaction(async (tx) => {
-    await tx.$executeRawUnsafe(`SELECT set_config('app.bypass_rls', 'on', true)`);
-
-    const existing = await tx.user.findUnique({ where: { email } });
-    if (existing) {
-      console.log(`Superadmin already exists: ${existing.email} (id=${existing.id}). Skipping.`);
-      return;
-    }
-
-    const passwordHash = await bcrypt.hash(ADMIN_PASSWORD, 10);
-
-    const created = await tx.user.create({
-      data: {
-        email,
-        password: passwordHash,
-        role: 'SUPER_ADMIN',
-      },
-      select: { id: true, email: true, role: true, createdAt: true },
+    const user = await tx.user.create({
+      data: { email, name: ADMIN_NAME, emailVerified: true, role: 'admin' },
+      select: { id: true, email: true, role: true },
     });
 
-    console.log(`Superadmin created: ${created.email} (id=${created.id}, role=${created.role})`);
+    await tx.account.create({
+      data: {
+        userId: user.id,
+        accountId: user.id,
+        providerId: 'credential',
+        password: await hashPassword(ADMIN_PASSWORD),
+      },
+    });
+
+    console.log(`Admin created: ${user.email} (id=${user.id}, role=${user.role})`);
     console.log(`Default password: ${ADMIN_PASSWORD} — change it after first login.`);
   });
 }

@@ -1,17 +1,13 @@
 import { Transform } from 'class-transformer';
-import { IsEmail, IsIn, IsOptional, IsString, MinLength } from 'class-validator';
-import { RoleEnum } from '@prisma/client';
+import { IsEmail, IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
-// Operator-created account for an existing tenant. SUPER_ADMIN cannot be assigned here —
-// platform operators are created out-of-band, never bound to a tenant.
+// Operator-created account for an existing tenant. `role` maps to the organization member role:
+// ADMIN -> org 'admin', USER -> org 'member'. Platform SUPER_ADMIN is never assigned here.
 export class CreateOrgUserDTO {
-  @IsOptional()
   @IsString()
-  firstName?: string;
-
-  @IsOptional()
-  @IsString()
-  lastName?: string;
+  @MinLength(1)
+  @MaxLength(120)
+  name!: string;
 
   @Transform(({ value }) => (typeof value === 'string' ? value.trim().toLowerCase() : value))
   @IsEmail()
@@ -22,6 +18,6 @@ export class CreateOrgUserDTO {
   password!: string;
 
   @IsOptional()
-  @IsIn([RoleEnum.ADMIN, RoleEnum.USER])
-  role?: RoleEnum;
+  @IsIn(['ADMIN', 'USER'])
+  role?: 'ADMIN' | 'USER';
 }

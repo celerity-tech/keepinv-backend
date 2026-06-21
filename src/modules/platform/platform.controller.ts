@@ -1,18 +1,17 @@
-import { Body, Controller, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
-import { RoleEnum } from '@prisma/client';
+import { Body, Controller, Param, ParseUUIDPipe, Post } from '@nestjs/common';
 
-import { PassportJwtGuard } from '../auth/guards/passport-jwt.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { Roles } from '@thallesp/nestjs-better-auth';
+
 import type { SafeUser } from '../users/types/users.types';
 import { CreateOrganizationDTO } from './dto/create-organization.dto';
 import { CreateOrgUserDTO } from './dto/create-org-user.dto';
 import { PlatformService, ProvisionResult } from './platform.service';
 
 // Operator-only endpoints for manual tenant provisioning (no public/self-service signup).
+// @Roles(['admin']) checks the Better Auth admin-plugin system role on user.role — i.e. the
+// platform SUPER_ADMIN (only the operator). Organization member roles cannot reach these routes.
 @Controller('platform')
-@UseGuards(PassportJwtGuard, RolesGuard)
-@Roles(RoleEnum.SUPER_ADMIN)
+@Roles(['admin'])
 export class PlatformController {
   constructor(private readonly platformService: PlatformService) {}
 
@@ -21,7 +20,7 @@ export class PlatformController {
     return this.platformService.createOrganization(body);
   }
 
-  // Add an ADMIN/USER account to an existing tenant on request.
+  // Add an org admin/member account to an existing tenant on request.
   @Post('organizations/:orgId/users')
   createOrganizationUser(
     @Param('orgId', ParseUUIDPipe) orgId: string,
