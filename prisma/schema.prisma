@@ -21,6 +21,12 @@ model Organization {
   metadata String? // Better Auth organization plugin
   isActive Boolean @default(true) @map("is_active")
 
+  // Subscription tier + per-tenant hardware/trial. Set by the operator at provisioning; surfaced
+  // to the client via GET /entitlements for feature gating (RFID, label printing).
+  plan        OrgPlan     @default(BASIC)
+  printerType PrinterType @default(NONE) @map("printer_type")
+  trialEndsAt DateTime?   @map("trial_ends_at")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -523,6 +529,18 @@ model InventoryAuditScan {
   @@index([scanValue])
   @@index([productUnitId])
   @@map("inventory_audit_scans")
+}
+
+// Subscription tier. BASIC = barcode + everything except RFID; PRO = adds RFID (POS + inventory).
+enum OrgPlan {
+  BASIC
+  PRO
+}
+
+// Label printer a tenant prints on, client-side. NONE = no label printing for this tenant yet.
+enum PrinterType {
+  NONE
+  NIIMBOT
 }
 
 enum ProductUnitStatus {

@@ -19,6 +19,8 @@ import { VoidSaleDTO } from './dto/void-sale.dto';
 import { PosService } from './pos.service';
 import { PosSaleListItem, PosSaleResult, PosSearchItem } from './types/pos.types';
 
+// TODO(enforcement): POS is a PRO-only module but is currently gated only on the frontend. Add a
+// `@RequireFeature('pos')` guard here so BASIC tenants can't reach these endpoints directly.
 @Controller('pos')
 export class PosController {
   constructor(private readonly posService: PosService) {}

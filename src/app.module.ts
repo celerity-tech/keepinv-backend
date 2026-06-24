@@ -24,6 +24,7 @@ import { StockMovementsModule } from './modules/stock-movements/stock-movements.
 import { InventoryAuditModule } from './modules/inventory-audit/inventory-audit.module';
 import { PosModule } from './modules/pos/pos.module';
 import { ReceiptImportsModule } from './modules/receipt-imports/receipt-imports.module';
+import { EntitlementsModule } from './modules/entitlements/entitlements.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { ReceiptImportsModule } from './modules/receipt-imports/receipt-imports.
     PosModule,
     ReceiptImportsModule,
     PlatformModule,
+    EntitlementsModule,
   ],
   controllers: [AppController],
   providers: [

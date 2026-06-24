@@ -1,10 +1,15 @@
+import { OrgPlan, PrinterType } from '@prisma/client';
 import { Transform, Type } from 'class-transformer';
 import {
   IsEmail,
+  IsEnum,
+  IsInt,
   IsOptional,
   IsString,
   Matches,
+  Max,
   MaxLength,
+  Min,
   MinLength,
   ValidateNested,
 } from 'class-validator';
@@ -38,6 +43,24 @@ export class CreateOrganizationDTO {
     message: 'slug must be lowercase alphanumeric words separated by single hyphens',
   })
   slug?: string;
+
+  // Subscription tier. Defaults to BASIC when omitted.
+  @IsOptional()
+  @IsEnum(OrgPlan)
+  plan?: OrgPlan;
+
+  // Label printer this tenant prints on. Defaults to NONE.
+  @IsOptional()
+  @IsEnum(PrinterType)
+  printerType?: PrinterType;
+
+  // Free-trial length in days from provisioning. Omitted -> 7; 0 disables the trial (e.g. internal
+  // or paid-upfront orgs).
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(365)
+  trialDays?: number;
 
   @ValidateNested()
   @Type(() => ProvisionAdminDTO)

@@ -13,9 +13,17 @@ const prisma = new PrismaClient({
   adapter: new PrismaPg(new Pool({ connectionString: DATABASE_URL })),
 });
 
-// This catalog belongs to the existing client (Rapido Motorsiklo Garage). Seeds run under
-// its tenant so RLS allows the writes and organization_id resolves via the column default.
-const ORGANIZATION_ID = 'ae73d42d-aa5d-4a9f-a3a0-d92fa831d853';
+// This catalog belongs to Rapido Motorsiklo Garage. Pass the org's id via RAPIDO_ORG_ID — the id
+// returned when you provision the org in Postman. Seeds run under that tenant so RLS allows the
+// writes and organization_id resolves via the column default.
+if (!process.env.RAPIDO_ORG_ID) {
+  console.error(
+    'Missing RAPIDO_ORG_ID. Set it to the Rapido organization id, e.g.\n' +
+      '  RAPIDO_ORG_ID=<org-uuid> bun prisma/seed-motorshop-products.ts',
+  );
+  process.exit(1);
+}
+const ORGANIZATION_ID: string = process.env.RAPIDO_ORG_ID;
 
 const CATEGORY_SEEDS = {
   // --- Original cable categories ---
