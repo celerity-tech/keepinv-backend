@@ -13,9 +13,6 @@ export interface ProvisionResult {
   admin: SafeUser;
 }
 
-const DEFAULT_TRIAL_DAYS = 7;
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
-
 @Injectable()
 export class PlatformService {
   // Manual tenant provisioning. SUPER_ADMIN-only (enforced at the controller). Creates the
@@ -23,9 +20,6 @@ export class PlatformService {
   // atomically on the identity tables (which are excluded from tenant RLS).
   async createOrganization(body: CreateOrganizationDTO): Promise<ProvisionResult> {
     const slug = body.slug ?? this.slugify(body.name);
-    const trialDays = body.trialDays ?? DEFAULT_TRIAL_DAYS;
-    const trialEndsAt =
-      trialDays > 0 ? new Date(Date.now() + trialDays * MS_PER_DAY) : null;
 
     try {
       return await authPrisma.$transaction(async (tx) => {
@@ -38,7 +32,6 @@ export class PlatformService {
             slug,
             plan: body.plan ?? 'BASIC',
             printerType: body.printerType ?? 'NONE',
-            trialEndsAt,
           },
         });
         const admin = await createCredentialUser(tx, body.admin);
@@ -56,9 +49,8 @@ export class PlatformService {
     }
   }
 
-  // Updates a tenant's plan / printer / trial / active flag. SUPER_ADMIN-only at the controller.
-  // Only the provided fields change; trialDays (when sent) recomputes trialEndsAt — 0 clears it
-  // (marks the org subscribed), > 0 starts/extends a trial that many days from now.
+  // Updates a tenant's name / plan / printer. SUPER_ADMIN-only at the controller. Only the provided
+  // fields change.
   async updateOrganization(
     organizationId: string,
     body: UpdateOrganizationDTO,
@@ -70,13 +62,6 @@ export class PlatformService {
     if (body.name !== undefined) data.name = body.name;
     if (body.plan !== undefined) data.plan = body.plan;
     if (body.printerType !== undefined) data.printerType = body.printerType;
-    if (body.isActive !== undefined) data.isActive = body.isActive;
-    // Explicit timestamp wins; otherwise derive from trialDays (0 clears = subscribed).
-    if (body.trialEndsAt !== undefined) {
-      data.trialEndsAt = body.trialEndsAt === null ? null : new Date(body.trialEndsAt);
-    } else if (body.trialDays !== undefined) {
-      data.trialEndsAt = body.trialDays > 0 ? new Date(Date.now() + body.trialDays * MS_PER_DAY) : null;
-    }
 
     return authPrisma.organization.update({ where: { id: organizationId }, data });
   }

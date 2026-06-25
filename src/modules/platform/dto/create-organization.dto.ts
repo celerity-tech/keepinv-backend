@@ -3,13 +3,10 @@ import { Transform, Type } from 'class-transformer';
 import {
   IsEmail,
   IsEnum,
-  IsInt,
   IsOptional,
   IsString,
   Matches,
-  Max,
   MaxLength,
-  Min,
   MinLength,
   ValidateNested,
 } from 'class-validator';
@@ -53,14 +50,6 @@ export class CreateOrganizationDTO {
   @IsOptional()
   @IsEnum(PrinterType)
   printerType?: PrinterType;
-
-  // Free-trial length in days from provisioning. Omitted -> 7; 0 disables the trial (e.g. internal
-  // or paid-upfront orgs).
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  @Max(365)
-  trialDays?: number;
 
   @ValidateNested()
   @Type(() => ProvisionAdminDTO)
