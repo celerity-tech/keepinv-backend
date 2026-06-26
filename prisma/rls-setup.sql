@@ -37,4 +37,3 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public
 
 -- Prisma's migration bookkeeping table is owner-only; app_user must NOT touch it.
 REVOKE ALL ON TABLE "_prisma_migrations" FROM app_user;
-w

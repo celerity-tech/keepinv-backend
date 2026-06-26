@@ -810,7 +810,7 @@ async function main() {
         },
       });
     }
-  });
+  }, { maxWait: 15000, timeout: 120000 });
 
   console.log(
     `Seeded ${Object.keys(CATEGORY_SEEDS).length} categories and ${ALL_PRODUCT_SEEDS.length} products.`,
