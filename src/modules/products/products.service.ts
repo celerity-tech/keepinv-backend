@@ -2,6 +2,7 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { Prisma, Product } from '@prisma/client';
 
 import { PrismaService } from '../../core/database/prisma.service';
+import { CloudinaryService } from '../../core/cloudinary/cloudinary.service';
 import { PaginatedResponse } from '../../common/responses/paginated-api.response';
 import { CreateProductDTO } from './dto/create-product.dto';
 import { UpdateProductDTO } from './dto/update-product.dto';
@@ -16,7 +17,10 @@ const PRODUCT_INCLUDE: Prisma.ProductInclude = {
 
 @Injectable()
 export class ProductsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cloudinary: CloudinaryService,
+  ) {}
 
   async createProduct(body: CreateProductDTO): Promise<Product> {
     const { sku, barcode, categoryId, supplierId, locationId } = body;
@@ -93,6 +97,38 @@ export class ProductsService {
     return this.prisma.product.update({
       where: { id },
       data: { isArchived: true },
+    });
+  }
+
+  // The photo is keyed by the product id under a per-tenant Cloudinary folder, so a re-upload
+  // overwrites the previous one in place. The stored organizationId (set by RLS on insert) keeps
+  // the folder tenant-scoped without re-reading the session here.
+  async setProductImage(id: string, file: Buffer): Promise<Product> {
+    const product = await this.getProduct(id);
+
+    const uploaded = await this.cloudinary.uploadProductImage(file, {
+      organizationId: product.organizationId,
+      productId: product.id,
+    });
+
+    return this.prisma.product.update({
+      where: { id },
+      data: { imageUrl: uploaded.url, imagePublicId: uploaded.publicId },
+      include: PRODUCT_INCLUDE,
+    });
+  }
+
+  async removeProductImage(id: string): Promise<Product> {
+    const product = await this.getProduct(id);
+
+    if (product.imagePublicId) {
+      await this.cloudinary.destroy(product.imagePublicId);
+    }
+
+    return this.prisma.product.update({
+      where: { id },
+      data: { imageUrl: null, imagePublicId: null },
+      include: PRODUCT_INCLUDE,
     });
   }
 

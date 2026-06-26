@@ -1,6 +1,6 @@
 {
   "info": {
-    "name": "Asset-Wise — Initial Products (No Stock)",
+    "name": "KeepInv — Initial Products (No Stock)",
     "description": "Seeds the motorshop control-cable catalog from the handwritten inventory (page 15).\n\nRun order:\n1. '0. Login' — captures {{accessToken}}.\n2. Folder '1. Categories' — creates the 3 cable categories and captures their IDs into variables.\n3. Folders '2. Products …' — creates 22 Product records with NO stock (quantityOnHand defaults to 0), null location, null supplier.\n\nThese are Product records (catalog SKUs), NOT ProductUnit records. Edit {{baseUrl}}, {{email}}, {{password}} before running.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },

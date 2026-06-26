@@ -2,10 +2,10 @@
 # Replace the domain + email. The domain's A record must point at this VPS's public IP,
 # and ports 80 + 443 must be open, BEFORE first start (Caddy provisions the cert on boot).
 {
-	email admin@acethekawaii.work
+	email admin@keepinv.com
 }
 
-api.acethekawaii.work {
+api.keepinv.com {
 	encode gzip
 	reverse_proxy api:8000
 }

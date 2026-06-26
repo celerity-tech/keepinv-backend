@@ -18,7 +18,7 @@
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_user') THEN
-    CREATE ROLE app_user LOGIN PASSWORD 'acethekawaii'
+    CREATE ROLE app_user LOGIN PASSWORD 'CHANGE_ME_STRONG_PASSWORD'
       NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
   END IF;
 END
@@ -37,3 +37,4 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public
 
 -- Prisma's migration bookkeeping table is owner-only; app_user must NOT touch it.
 REVOKE ALL ON TABLE "_prisma_migrations" FROM app_user;
+w

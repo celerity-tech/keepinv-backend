@@ -7,7 +7,7 @@ import { Pool } from 'pg';
 // Default bootstrap platform admin (Better Auth system role 'admin' = SUPER_ADMIN). Org-less.
 // Change the password via the running app immediately after first login. Do NOT deploy with
 // these defaults in place.
-const ADMIN_EMAIL = 'admin@geoplan.ph';
+const ADMIN_EMAIL = 'admin@keepinv.com';
 const ADMIN_PASSWORD = 'admin123';
 const ADMIN_NAME = 'Platform Admin';
 

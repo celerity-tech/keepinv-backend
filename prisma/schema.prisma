@@ -290,6 +290,11 @@ model Product {
   sku            String
   barcode        String?
   brand          String?
+  // Cloudinary-hosted product photo. imageUrl is the optimised delivery URL (auto format/quality,
+  // max-width capped); imagePublicId is the source asset id, kept so the photo can be overwritten
+  // or destroyed on replace/remove.
+  imageUrl       String? @map("image_url")
+  imagePublicId  String? @map("image_public_id")
   costPrice      Decimal @default(0) @map("cost_price") @db.Decimal(12, 2)
   sellingPrice   Decimal @default(0) @map("selling_price") @db.Decimal(12, 2)
   quantityOnHand Int     @default(0) @map("quantity_on_hand")

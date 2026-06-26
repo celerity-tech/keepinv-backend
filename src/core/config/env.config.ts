@@ -6,7 +6,7 @@ const schema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
 
   // Public origin of this API (no trailing slash). Better Auth uses it as its baseURL to
-  // build cookie/callback URLs, e.g. https://assetwise-api.acethekawaii.work
+  // build cookie/callback URLs, e.g. https://api.keepinv.com
   APP_URL: z.string().url().default('http://localhost:3000'),
 
   // Runtime connection. In production this MUST be the least-privilege, non-superuser
@@ -29,6 +29,13 @@ const schema = z.object({
   // Leave 'false' during the initial single-tenant rollout; set 'true' once the backend
   // connects as app_user (and BEFORE provisioning a second organization).
   ENFORCE_RLS: z.enum(['true', 'false']).default('false'),
+
+  // Cloudinary hosts product photos. All three are required for image upload to work; leave
+  // them unset locally and the upload endpoint simply 503s (the rest of the app still boots).
+  // The API key MUST have upload ("create") permission — a read-only/restricted key 403s.
+  CLOUDINARY_CLOUD_NAME: z.string().optional(),
+  CLOUDINARY_API_KEY: z.string().optional(),
+  CLOUDINARY_API_SECRET: z.string().optional(),
 });
 
 const parsed = schema.safeParse(process.env);
