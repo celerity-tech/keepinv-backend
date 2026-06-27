@@ -11,14 +11,14 @@ const ADMIN_EMAIL = 'admin@keepinv.com';
 const ADMIN_PASSWORD = 'admin123';
 const ADMIN_NAME = 'Platform Admin';
 
-const DATABASE_URL = process.env.DATABASE_URL;
-if (!DATABASE_URL) {
-  console.error('Missing DATABASE_URL in environment.');
+const BOOTSTRAP_DATABASE_URL = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
+if (!BOOTSTRAP_DATABASE_URL) {
+  console.error('Missing DIRECT_URL or DATABASE_URL in environment.');
   process.exit(1);
 }
 
 const prisma = new PrismaClient({
-  adapter: new PrismaPg(new Pool({ connectionString: DATABASE_URL })),
+  adapter: new PrismaPg(new Pool({ connectionString: BOOTSTRAP_DATABASE_URL })),
 });
 
 async function main() {

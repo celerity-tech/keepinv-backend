@@ -1,4 +1,4 @@
-import { Body, Controller, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
 
 import { Organization } from '@prisma/client';
 import { Roles } from '@thallesp/nestjs-better-auth';
@@ -16,6 +16,11 @@ import { PlatformService, ProvisionResult } from './platform.service';
 @Roles(['admin'])
 export class PlatformController {
   constructor(private readonly platformService: PlatformService) {}
+
+  @Get('organizations')
+  listOrganizations(): Promise<Organization[]> {
+    return this.platformService.listOrganizations();
+  }
 
   @Post('organizations')
   createOrganization(@Body() body: CreateOrganizationDTO): Promise<ProvisionResult> {

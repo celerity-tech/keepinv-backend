@@ -56,6 +56,12 @@ export class PlatformService {
     }
   }
 
+  // Lists every tenant. SUPER_ADMIN-only at the controller. Runs on the plain Better Auth client
+  // (organization is an identity table, excluded from tenant RLS), so it returns all orgs.
+  async listOrganizations(): Promise<Organization[]> {
+    return authPrisma.organization.findMany({ orderBy: { createdAt: 'desc' } });
+  }
+
   // Updates a tenant's plan / printer / trial / active flag. SUPER_ADMIN-only at the controller.
   // Only the provided fields change; trialDays (when sent) recomputes trialEndsAt — 0 clears it
   // (marks the org subscribed), > 0 starts/extends a trial that many days from now.
