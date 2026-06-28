@@ -1,3 +1,10 @@
+// PREREQUISITE: Row-Level Security must be configured before the app can serve tenant data.
+// The migration `20260627000000_setup_rls_role` creates the `app_user` role and grants it
+// the correct DML permissions. Run `bunx prisma migrate deploy` (as the DB owner via
+// DIRECT_URL) before seeding. In production, DATABASE_URL must point at `app_user` and
+// ENFORCE_RLS=true must be set — otherwise tenant isolation is not enforced.
+// See docs/RLS_SETUP.md for the full two-connection pattern and manual setup instructions.
+
 import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
