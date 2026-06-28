@@ -19,7 +19,7 @@ export interface UploadedImage {
 type CloudinaryError = Error & { http_code?: number };
 
 // Top-level Cloudinary folder for this app's assets (matches the dashboard folder).
-const ROOT_FOLDER = 'assetwise';
+const ROOT_FOLDER = 'rapidomotorsiklo';
 
 /**
  * Thin wrapper over the Cloudinary SDK for product photos. Credentials are optional: when any are
@@ -95,6 +95,32 @@ export class CloudinaryService {
       );
     }
     return new BadGatewayException('Image upload failed. Please try again.');
+  }
+
+  /**
+   * Permanently delete every product photo belonging to an organization, then its now-empty folder.
+   * Used when a tenant is wiped. Safe to call when unconfigured. Failures are logged, never thrown:
+   * the DB wipe has already committed, so a Cloudinary hiccup must not surface as a failed deletion.
+   */
+  async destroyProductImages(organizationId: string): Promise<void> {
+    if (!this.configured) {
+      return;
+    }
+    const prefix = `${ROOT_FOLDER}/products/${organizationId}`;
+    try {
+      // delete_resources_by_prefix removes up to 1000 assets per call; repeat while more remain.
+      let partial = true;
+      while (partial) {
+        const result = await cloudinary.api.delete_resources_by_prefix(prefix, {
+          resource_type: 'image',
+          invalidate: true,
+        });
+        partial = Boolean((result as { partial?: boolean }).partial);
+      }
+      await cloudinary.api.delete_folder(prefix);
+    } catch (error) {
+      this.logger.warn(`Failed to purge Cloudinary folder ${prefix}: ${String(error)}`);
+    }
   }
 
   /** Permanently delete a product photo by its public id. Safe to call when unconfigured. */

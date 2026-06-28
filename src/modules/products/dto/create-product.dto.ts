@@ -1,10 +1,13 @@
 import { Transform, Type } from 'class-transformer';
+import { SupplierPlatform } from '@prisma/client';
 import {
   IsBoolean,
+  IsEnum,
   IsInt,
   IsNumber,
   IsOptional,
   IsString,
+  IsUrl,
   IsUUID,
   MaxLength,
   Min,
@@ -62,6 +65,16 @@ export class CreateProductDTO {
   @IsInt()
   @Min(0)
   reorderPoint?: number;
+
+  @IsOptional()
+  @Transform(trim)
+  @IsUrl({ protocols: ['http', 'https'], require_protocol: true })
+  @MaxLength(2048)
+  reorderUrl?: string;
+
+  @IsOptional()
+  @IsEnum(SupplierPlatform)
+  reorderPlatform?: SupplierPlatform;
 
   @IsOptional()
   @IsBoolean()

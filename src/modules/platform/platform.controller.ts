@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
 
 import { Organization } from '@prisma/client';
 import { Roles } from '@thallesp/nestjs-better-auth';
@@ -7,7 +7,7 @@ import type { SafeUser } from '../users/types/users.types';
 import { CreateOrganizationDTO } from './dto/create-organization.dto';
 import { CreateOrgUserDTO } from './dto/create-org-user.dto';
 import { UpdateOrganizationDTO } from './dto/update-organization.dto';
-import { PlatformService, ProvisionResult } from './platform.service';
+import { DeleteOrganizationResult, PlatformService, ProvisionResult } from './platform.service';
 
 // Operator-only endpoints for manual tenant provisioning (no public/self-service signup).
 // @Roles(['admin']) checks the Better Auth admin-plugin system role on user.role — i.e. the
@@ -43,5 +43,14 @@ export class PlatformController {
     @Body() body: CreateOrgUserDTO,
   ): Promise<SafeUser> {
     return this.platformService.createOrganizationUser(orgId, body);
+  }
+
+  // Permanently wipe a tenant and all its data (business rows, org-exclusive users, hosted images).
+  // IRREVERSIBLE — there is no soft-delete or grace period.
+  @Delete('organizations/:orgId')
+  deleteOrganization(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+  ): Promise<DeleteOrganizationResult> {
+    return this.platformService.deleteOrganization(orgId);
   }
 }

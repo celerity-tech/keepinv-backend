@@ -3,6 +3,8 @@ import { Organization, Prisma } from '@prisma/client';
 
 import { authPrisma } from '../../core/auth/auth.client';
 import { createCredentialUser, OrgRole, provisionOrganizationUser } from '../../core/auth/provisioning';
+import { CloudinaryService } from '../../core/cloudinary/cloudinary.service';
+import { PG_BYPASS_SETTING } from '../../core/tenant/tenant.types';
 import type { SafeUser } from '../users/types/users.types';
 import { CreateOrganizationDTO } from './dto/create-organization.dto';
 import { CreateOrgUserDTO } from './dto/create-org-user.dto';
@@ -13,11 +15,19 @@ export interface ProvisionResult {
   admin: SafeUser;
 }
 
+export interface DeleteOrganizationResult {
+  id: string;
+  name: string;
+  deletedUsers: number;
+}
+
 const DEFAULT_TRIAL_DAYS = 7;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class PlatformService {
+  constructor(private readonly cloudinary: CloudinaryService) {}
+
   // Manual tenant provisioning. SUPER_ADMIN-only (enforced at the controller). Creates the
   // organization and its first owner — a Better Auth credential user + an 'owner' membership —
   // atomically on the identity tables (which are excluded from tenant RLS).
@@ -95,6 +105,83 @@ export class PlatformService {
 
     const role: OrgRole = body.role === 'ADMIN' ? 'admin' : 'member';
     return provisionOrganizationUser(organizationId, body, role);
+  }
+
+  // Permanently wipes a tenant: every business row, its org-exclusive user accounts, the org
+  // itself, and its hosted product images. SUPER_ADMIN-only at the controller. IRREVERSIBLE — no
+  // soft-delete, no grace period. The DB work runs in one transaction so it is all-or-nothing.
+  async deleteOrganization(organizationId: string): Promise<DeleteOrganizationResult> {
+    const organization = await authPrisma.organization.findUnique({ where: { id: organizationId } });
+    if (!organization) throw new NotFoundException('Organization not found');
+
+    // Business tables are FORCE-RLS and authPrisma sets no tenant GUC, so without bypass these
+    // deletes would match zero rows. set_config(..., true) enables bypass for THIS transaction only.
+    const deletedUsers = await authPrisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config(${PG_BYPASS_SETTING}, 'on', true)`;
+
+      // Children before parents so no RESTRICT foreign key blocks the delete.
+      await tx.inventoryAuditScan.deleteMany({ where: { organizationId } });
+      await tx.inventoryAudit.deleteMany({ where: { organizationId } });
+      await tx.stockMovement.deleteMany({ where: { organizationId } });
+      await tx.saleItem.deleteMany({ where: { organizationId } });
+      await tx.sale.deleteMany({ where: { organizationId } });
+      await tx.productUnit.deleteMany({ where: { organizationId } });
+      await tx.product.deleteMany({ where: { organizationId } });
+      await tx.supplierLink.deleteMany({ where: { organizationId } });
+      await tx.supplier.deleteMany({ where: { organizationId } });
+      await tx.location.deleteMany({ where: { organizationId } });
+      await tx.category.deleteMany({ where: { organizationId } });
+
+      // Users tied to this org via membership or the legacy users.organizationId column.
+      const [members, legacyUsers] = await Promise.all([
+        tx.member.findMany({ where: { organizationId }, select: { userId: true } }),
+        tx.user.findMany({ where: { organizationId }, select: { id: true } }),
+      ]);
+      const candidateIds = [
+        ...new Set([...members.map((m) => m.userId), ...legacyUsers.map((u) => u.id)]),
+      ];
+
+      // A candidate shared with another org (member elsewhere, or legacy column points elsewhere)
+      // is kept; only org-exclusive accounts are deleted.
+      const sharedIds = new Set<string>();
+      if (candidateIds.length > 0) {
+        const [otherMembers, otherLegacy] = await Promise.all([
+          tx.member.findMany({
+            where: { userId: { in: candidateIds }, organizationId: { not: organizationId } },
+            select: { userId: true },
+          }),
+          tx.user.findMany({
+            where: { id: { in: candidateIds }, organizationId: { not: organizationId } },
+            select: { id: true },
+          }),
+        ]);
+        otherMembers.forEach((m) => sharedIds.add(m.userId));
+        otherLegacy.forEach((u) => sharedIds.add(u.id));
+      }
+      const userIdsToDelete = candidateIds.filter((id) => !sharedIds.has(id));
+
+      // Kept users still pointing here via the legacy RESTRICT column would block the org delete —
+      // sever that link first.
+      await tx.user.updateMany({
+        where: { organizationId, id: { notIn: userIdsToDelete } },
+        data: { organizationId: null },
+      });
+
+      // Deleting a user cascades its accounts, sessions, memberships and sent invitations.
+      if (userIdsToDelete.length > 0) {
+        await tx.user.deleteMany({ where: { id: { in: userIdsToDelete } } });
+      }
+
+      // Any remaining (shared) users' membership in this org cascades with the org delete.
+      await tx.organization.delete({ where: { id: organizationId } });
+
+      return userIdsToDelete.length;
+    });
+
+    // External assets are purged AFTER the DB commit so a Cloudinary failure can't roll back the wipe.
+    await this.cloudinary.destroyProductImages(organizationId);
+
+    return { id: organization.id, name: organization.name, deletedUsers };
   }
 
   private slugify(name: string): string {

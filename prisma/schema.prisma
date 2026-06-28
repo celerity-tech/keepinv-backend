@@ -197,7 +197,7 @@ model Category {
   description String?
   isArchived  Boolean @default(false) @map("is_archived")
 
-  organizationId String       @default(dbgenerated("current_setting('app.current_org_id', true)")) @map("organization_id")
+  organizationId String       @default(dbgenerated("current_setting('app.current_org_id'::text, true)")) @map("organization_id")
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -221,7 +221,7 @@ model Supplier {
   notes       String?
   isArchived  Boolean @default(false) @map("is_archived")
 
-  organizationId String       @default(dbgenerated("current_setting('app.current_org_id', true)")) @map("organization_id")
+  organizationId String       @default(dbgenerated("current_setting('app.current_org_id'::text, true)")) @map("organization_id")
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -244,7 +244,7 @@ model SupplierLink {
   label      String?
   isArchived Boolean          @default(false) @map("is_archived")
 
-  organizationId String       @default(dbgenerated("current_setting('app.current_org_id', true)")) @map("organization_id")
+  organizationId String       @default(dbgenerated("current_setting('app.current_org_id'::text, true)")) @map("organization_id")
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -266,7 +266,7 @@ model Location {
   description String?
   isArchived  Boolean @default(false) @map("is_archived")
 
-  organizationId String       @default(dbgenerated("current_setting('app.current_org_id', true)")) @map("organization_id")
+  organizationId String       @default(dbgenerated("current_setting('app.current_org_id'::text, true)")) @map("organization_id")
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -299,10 +299,14 @@ model Product {
   sellingPrice   Decimal @default(0) @map("selling_price") @db.Decimal(12, 2)
   quantityOnHand Int     @default(0) @map("quantity_on_hand")
   reorderPoint   Int?    @map("reorder_point")
+  // Direct "fast reorder" link to this exact item's store page (Shopee/Lazada/Alibaba/etc.).
+  // reorderPlatform is optional and only drives the icon/label the client renders next to the link.
+  reorderUrl      String?           @map("reorder_url")
+  reorderPlatform SupplierPlatform? @map("reorder_platform")
   isSerialized   Boolean @default(false) @map("is_serialized")
   isArchived     Boolean @default(false) @map("is_archived")
 
-  organizationId String       @default(dbgenerated("current_setting('app.current_org_id', true)")) @map("organization_id")
+  organizationId String       @default(dbgenerated("current_setting('app.current_org_id'::text, true)")) @map("organization_id")
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
   categoryId String   @map("category_id")
@@ -338,7 +342,7 @@ model ProductUnit {
   rfidTag      String?           @map("rfid_tag")
   status       ProductUnitStatus @default(IN_STOCK)
 
-  organizationId String       @default(dbgenerated("current_setting('app.current_org_id', true)")) @map("organization_id")
+  organizationId String       @default(dbgenerated("current_setting('app.current_org_id'::text, true)")) @map("organization_id")
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
   productId String  @map("product_id")
@@ -371,7 +375,7 @@ model StockMovement {
   quantityAfter  Int               @map("quantity_after")
   note           String?
 
-  organizationId String       @default(dbgenerated("current_setting('app.current_org_id', true)")) @map("organization_id")
+  organizationId String       @default(dbgenerated("current_setting('app.current_org_id'::text, true)")) @map("organization_id")
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
   productId String  @map("product_id")
@@ -423,7 +427,7 @@ model Sale {
   voidedAt        DateTime?     @map("voided_at")
   voidReason      String?       @map("void_reason")
 
-  organizationId String       @default(dbgenerated("current_setting('app.current_org_id', true)")) @map("organization_id")
+  organizationId String       @default(dbgenerated("current_setting('app.current_org_id'::text, true)")) @map("organization_id")
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
   cashierId String @map("cashier_id")
@@ -458,7 +462,7 @@ model SaleItem {
   productBarcode String? @map("product_barcode")
   unitIdentifier String? @map("unit_identifier")
 
-  organizationId String       @default(dbgenerated("current_setting('app.current_org_id', true)")) @map("organization_id")
+  organizationId String       @default(dbgenerated("current_setting('app.current_org_id'::text, true)")) @map("organization_id")
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
   saleId String @map("sale_id")
@@ -488,7 +492,7 @@ model InventoryAudit {
   startedAt   DateTime             @default(now()) @map("started_at")
   completedAt DateTime?            @map("completed_at")
 
-  organizationId String       @default(dbgenerated("current_setting('app.current_org_id', true)")) @map("organization_id")
+  organizationId String       @default(dbgenerated("current_setting('app.current_org_id'::text, true)")) @map("organization_id")
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
   locationId String   @map("location_id")
@@ -516,7 +520,7 @@ model InventoryAuditScan {
   scanValue String                 @map("scan_value")
   scanMode  InventoryAuditScanMode @default(RFID) @map("scan_mode")
 
-  organizationId String       @default(dbgenerated("current_setting('app.current_org_id', true)")) @map("organization_id")
+  organizationId String       @default(dbgenerated("current_setting('app.current_org_id'::text, true)")) @map("organization_id")
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
   auditId String         @map("audit_id")
@@ -574,6 +578,7 @@ enum SupplierPlatform {
   FACEBOOK
   WEBSITE
   OTHER
+  ALIBABA
 }
 
 enum InventoryAuditStatus {
