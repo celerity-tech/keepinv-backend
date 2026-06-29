@@ -3,14 +3,12 @@ import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
-  IsIn,
   IsOptional,
   IsString,
   IsUUID,
   MaxLength,
   ValidateNested,
 } from 'class-validator';
-import { StockMovementType } from '@prisma/client';
 
 const trimOptional = ({ value }: { value: unknown }) => {
   if (typeof value !== 'string') return value;
@@ -46,8 +44,8 @@ export class RegisterProductUnitsDTO {
   locationId!: string;
 
   @IsOptional()
-  @IsIn([StockMovementType.INITIAL, StockMovementType.PURCHASE])
-  movementType?: StockMovementType;
+  @IsUUID()
+  stockMovementTypeId?: string;
 
   @IsOptional()
   @IsUUID()

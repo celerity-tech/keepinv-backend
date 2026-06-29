@@ -1,6 +1,4 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { StockMovementType } from '@prisma/client';
-
 import { StockMovementsController } from './stock-movements.controller';
 import { StockMovementsService } from './stock-movements.service';
 import type { UserSession } from '@thallesp/nestjs-better-auth';
@@ -38,7 +36,7 @@ describe('StockMovementsController', () => {
   it('records a movement using the authenticated user id', async () => {
     const body = {
       productId: '11111111-1111-1111-1111-111111111111',
-      type: StockMovementType.PURCHASE,
+      stockMovementTypeId: '22222222-2222-2222-2222-222222222222',
       quantity: 5,
     } as CreateStockMovementDTO;
 

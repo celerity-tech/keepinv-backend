@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
-import { Product, ProductUnit, ProductUnitStatus, StockMovementType } from '@prisma/client';
+import { Product, ProductUnit, ProductUnitStatus, StockMovementEffect } from '@prisma/client';
 
 import { ProductUnitService } from './product-unit.service';
 import { PrismaService } from '../../core/database/prisma.service';
@@ -9,6 +9,7 @@ import { FilterProductUnitsDTO } from './dto/filter-product-units.dto';
 const PRODUCT_ID = '11111111-1111-1111-1111-111111111111';
 const LOCATION_ID = '22222222-2222-2222-2222-222222222222';
 const USER_ID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+const MOVEMENT_TYPE_ID = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
 
 const buildProduct = (overrides: Partial<Product> = {}): Product => ({
   id: PRODUCT_ID,
@@ -55,6 +56,7 @@ describe('ProductUnitService', () => {
   let tx: {
     productUnit: { create: jest.Mock; update: jest.Mock; findFirst: jest.Mock; findMany: jest.Mock; count: jest.Mock };
     product: { update: jest.Mock; findFirst: jest.Mock };
+    stockMovementType: { findFirst: jest.Mock };
     stockMovement: { create: jest.Mock };
     $executeRaw: jest.Mock;
   };
@@ -69,6 +71,7 @@ describe('ProductUnitService', () => {
     };
     location: { findFirst: jest.Mock };
     supplier: { findFirst: jest.Mock };
+    stockMovementType: { findFirst: jest.Mock };
     setTenantContext: jest.Mock;
     $transaction: jest.Mock;
   };
@@ -84,14 +87,21 @@ describe('ProductUnitService', () => {
       create: jest.fn(),
     };
     const stockMovement = { create: jest.fn() };
+    const stockMovementType = {
+      findFirst: jest.fn().mockResolvedValue({
+        id: MOVEMENT_TYPE_ID,
+        effect: StockMovementEffect.INCREASE,
+      }),
+    };
 
-    tx = { productUnit, product, stockMovement, $executeRaw: jest.fn() };
+    tx = { productUnit, product, stockMovementType, stockMovement, $executeRaw: jest.fn() };
 
     prisma = {
       product,
       productUnit,
       location: { findFirst: jest.fn().mockResolvedValue({ id: LOCATION_ID }) },
       supplier: { findFirst: jest.fn() },
+      stockMovementType,
       setTenantContext: jest.fn(),
       $transaction: jest.fn().mockImplementation((arg) =>
         typeof arg === 'function' ? arg(tx) : Promise.all(arg),
@@ -114,7 +124,7 @@ describe('ProductUnitService', () => {
       service.registerProductUnits(USER_ID, {
         productId: PRODUCT_ID,
         locationId: LOCATION_ID,
-        movementType: StockMovementType.PURCHASE,
+        stockMovementTypeId: MOVEMENT_TYPE_ID,
         note: 'PO-1001',
         units: [
           { serialNumber: 'SN-001', rfidTag: 'EPC-001' },
@@ -143,7 +153,7 @@ describe('ProductUnitService', () => {
         1,
         expect.objectContaining({
           data: expect.objectContaining({
-            type: StockMovementType.PURCHASE,
+            stockMovementTypeId: MOVEMENT_TYPE_ID,
             quantityChange: 1,
             quantityAfter: 6,
             productId: PRODUCT_ID,
@@ -402,7 +412,7 @@ describe('ProductUnitService', () => {
       expect(tx.stockMovement.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            type: StockMovementType.SALE,
+            stockMovementTypeId: MOVEMENT_TYPE_ID,
             quantityChange: -1,
             quantityAfter: 4,
             productUnitId: 'unit-1',
@@ -454,7 +464,7 @@ describe('ProductUnitService', () => {
       expect(tx.stockMovement.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            type: StockMovementType.RETURN,
+            stockMovementTypeId: MOVEMENT_TYPE_ID,
             quantityChange: 1,
             quantityAfter: 5,
             locationId: LOCATION_ID,
@@ -480,7 +490,7 @@ describe('ProductUnitService', () => {
       expect(tx.stockMovement.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            type: StockMovementType.ADJUSTMENT,
+            stockMovementTypeId: MOVEMENT_TYPE_ID,
             quantityChange: -1,
             note: 'Disposed',
             locationId: null,

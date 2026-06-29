@@ -21,6 +21,7 @@ import { LocationsModule } from './modules/locations/locations.module';
 import { ProductsModule } from './modules/products/products.module';
 import { ProductUnitModule } from './modules/product-unit/product-unit.module';
 import { StockMovementsModule } from './modules/stock-movements/stock-movements.module';
+import { StockMovementTypesModule } from './modules/stock-movement-types/stock-movement-types.module';
 import { InventoryAuditModule } from './modules/inventory-audit/inventory-audit.module';
 import { PosModule } from './modules/pos/pos.module';
 import { ReceiptImportsModule } from './modules/receipt-imports/receipt-imports.module';
@@ -39,6 +40,7 @@ import { EntitlementsModule } from './modules/entitlements/entitlements.module';
     ProductsModule,
     ProductUnitModule,
     StockMovementsModule,
+    StockMovementTypesModule,
     InventoryAuditModule,
     PosModule,
     ReceiptImportsModule,

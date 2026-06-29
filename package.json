@@ -17,6 +17,7 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
+    "backfill:stock-movement-types": "bun scripts/backfill-stock-movement-types.ts",
     "seed:products": "bun prisma/seed-motorshop-products.ts"
   },
   "dependencies": {

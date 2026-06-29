@@ -13,6 +13,7 @@ export const PRODUCT_UNIT_MOVEMENT_INCLUDE = {
   supplier: true,
   location: true,
   user: true,
+  stockMovementType: true,
 } satisfies Prisma.StockMovementInclude;
 
 export type ProductUnitWithRelations = Prisma.ProductUnitGetPayload<{

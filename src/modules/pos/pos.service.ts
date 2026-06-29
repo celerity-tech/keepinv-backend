@@ -7,7 +7,6 @@ import {
   Product,
   ProductUnitStatus,
   SaleStatus,
-  StockMovementType,
 } from '@prisma/client';
 
 import { PrismaService } from '../../core/database/prisma.service';
@@ -29,6 +28,8 @@ import {
   ReceiptData,
   ReceiptItemData,
 } from './types/pos.types';
+import { STOCK_MOVEMENT_SYSTEM_KEY } from '../stock-movement-types/constants/stock-movement-type.constants';
+import { getSystemStockMovementTypeId } from '../stock-movement-types/utils/stock-movement-type.utils';
 
 type PrismaClientLike = PrismaService | Prisma.TransactionClient;
 
@@ -144,6 +145,10 @@ export class PosService {
 
     return this.prisma.$transaction(async (tx) => {
       await this.prisma.setTenantContext(tx);
+      const saleMovementTypeId = await getSystemStockMovementTypeId(
+        tx,
+        STOCK_MOVEMENT_SYSTEM_KEY.SALE,
+      );
 
       const cashier = await this.getCashier(userId, tx);
       const lines = await this.prepareSaleLines(normalizedItems, tx);
@@ -187,6 +192,7 @@ export class PosService {
           userId,
           receiptNo,
           note: body.note,
+          stockMovementTypeId: saleMovementTypeId,
           line,
         });
       }
@@ -227,6 +233,10 @@ export class PosService {
   async voidSale(userId: string, id: string, body: VoidSaleDTO): Promise<PosSaleResult> {
     return this.prisma.$transaction(async (tx) => {
       await this.prisma.setTenantContext(tx);
+      const returnMovementTypeId = await getSystemStockMovementTypeId(
+        tx,
+        STOCK_MOVEMENT_SYSTEM_KEY.RETURN,
+      );
 
       const sale = await this.findSaleOrThrow(id, tx);
       if (sale.status === SaleStatus.VOIDED) {
@@ -237,7 +247,9 @@ export class PosService {
 
       for (const item of sale.items) {
         const originalMovement = sale.stockMovements.find(
-          (movement) => movement.saleItemId === item.id && movement.type === StockMovementType.SALE,
+          (movement) =>
+            movement.saleItemId === item.id &&
+            movement.stockMovementType?.systemKey === STOCK_MOVEMENT_SYSTEM_KEY.SALE,
         );
         const locationId = originalMovement?.locationId ?? item.product.locationId;
 
@@ -250,6 +262,7 @@ export class PosService {
             locationId,
             userId,
             reason: body.reason,
+            stockMovementTypeId: returnMovementTypeId,
           });
           continue;
         }
@@ -262,6 +275,7 @@ export class PosService {
           locationId,
           userId,
           reason: body.reason,
+          stockMovementTypeId: returnMovementTypeId,
         });
       }
 
@@ -406,6 +420,7 @@ export class PosService {
       userId: string;
       receiptNo: string;
       note?: string;
+      stockMovementTypeId: string;
       line: PreparedSaleLine;
     },
   ): Promise<void> {
@@ -432,6 +447,7 @@ export class PosService {
         userId: input.userId,
         receiptNo: input.receiptNo,
         note: input.note,
+        stockMovementTypeId: input.stockMovementTypeId,
         line,
       });
       return;
@@ -443,6 +459,7 @@ export class PosService {
       userId: input.userId,
       receiptNo: input.receiptNo,
       note: input.note,
+      stockMovementTypeId: input.stockMovementTypeId,
       line,
     });
   }
@@ -455,6 +472,7 @@ export class PosService {
       userId: string;
       receiptNo: string;
       note?: string;
+      stockMovementTypeId: string;
       line: PreparedSaleLine;
     },
   ): Promise<void> {
@@ -469,7 +487,7 @@ export class PosService {
 
     await tx.stockMovement.create({
       data: {
-        type: StockMovementType.SALE,
+        stockMovementTypeId: input.stockMovementTypeId,
         quantityChange: -input.line.quantity,
         quantityAfter: updatedProduct.quantityOnHand,
         note: input.note ?? `POS sale ${input.receiptNo}`,
@@ -490,6 +508,7 @@ export class PosService {
       userId: string;
       receiptNo: string;
       note?: string;
+      stockMovementTypeId: string;
       line: PreparedSaleLine;
     },
   ): Promise<void> {
@@ -518,7 +537,7 @@ export class PosService {
 
     await tx.stockMovement.create({
       data: {
-        type: StockMovementType.SALE,
+        stockMovementTypeId: input.stockMovementTypeId,
         quantityChange: -1,
         quantityAfter: updatedProduct.quantityOnHand,
         note: input.note ?? `POS sale ${input.receiptNo}`,
@@ -542,6 +561,7 @@ export class PosService {
       locationId: string | null;
       userId: string;
       reason?: string;
+      stockMovementTypeId: string;
     },
   ): Promise<void> {
     const updatedProduct = await tx.product.update({
@@ -551,7 +571,7 @@ export class PosService {
 
     await tx.stockMovement.create({
       data: {
-        type: StockMovementType.RETURN,
+        stockMovementTypeId: input.stockMovementTypeId,
         quantityChange: input.quantity,
         quantityAfter: updatedProduct.quantityOnHand,
         note: input.reason ?? `Voided POS sale ${input.sale.receiptNo}`,
@@ -574,6 +594,7 @@ export class PosService {
       locationId: string | null;
       userId: string;
       reason?: string;
+      stockMovementTypeId: string;
     },
   ): Promise<void> {
     const updatedProduct = await tx.product.update({
@@ -591,7 +612,7 @@ export class PosService {
 
     await tx.stockMovement.create({
       data: {
-        type: StockMovementType.RETURN,
+        stockMovementTypeId: input.stockMovementTypeId,
         quantityChange: 1,
         quantityAfter: updatedProduct.quantityOnHand,
         note: input.reason ?? `Voided POS sale ${input.sale.receiptNo}`,

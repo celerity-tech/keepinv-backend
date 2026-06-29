@@ -1,9 +1,11 @@
 import { ConflictException, BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, Product, StockMovementType, Supplier } from '@prisma/client';
+import { Prisma, Product, Supplier } from '@prisma/client';
 import { randomUUID } from 'crypto';
 
 import { PrismaService } from '../../core/database/prisma.service';
 import { MIN_CONFIDENCE, ReceiptImportDTO, ReceiptImportItemDTO } from './dto/receipt-import.dto';
+import { STOCK_MOVEMENT_SYSTEM_KEY } from '../stock-movement-types/constants/stock-movement-type.constants';
+import { getSystemStockMovementTypeId } from '../stock-movement-types/utils/stock-movement-type.utils';
 
 type ReceiptImportAction = 'MATCH_PRODUCT' | 'CREATE_PRODUCT' | 'REJECT';
 
@@ -88,6 +90,10 @@ export class ReceiptImportsService {
 
     return this.prisma.$transaction(async (tx) => {
       await this.prisma.setTenantContext(tx);
+      const stockMovementTypeId = await getSystemStockMovementTypeId(
+        tx,
+        STOCK_MOVEMENT_SYSTEM_KEY.PURCHASE,
+      );
       await this.ensureIdempotencyKeyUnused(tx, body);
 
       const supplier = await this.findOrCreateSupplier(tx, body);
@@ -116,7 +122,7 @@ export class ReceiptImportsService {
 
         await tx.stockMovement.create({
           data: {
-            type: StockMovementType.PURCHASE,
+            stockMovementTypeId,
             quantityChange: item.quantity,
             quantityAfter: updated.quantityOnHand,
             note: this.buildMovementNote(body, item),

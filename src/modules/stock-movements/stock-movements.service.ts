@@ -1,10 +1,11 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, StockMovement, StockMovementType } from '@prisma/client';
+import { Prisma, StockMovement, StockMovementEffect } from '@prisma/client';
 
 import { PrismaService } from '../../core/database/prisma.service';
 import { PaginatedResponse } from '../../common/responses/paginated-api.response';
 import { CreateStockMovementDTO } from './dto/create-stock-movement.dto';
 import { FilterStockMovementsDTO } from './dto/filter-stock-movements.dto';
+import { STOCK_MOVEMENT_SYSTEM_KEY } from '../stock-movement-types/constants/stock-movement-type.constants';
 
 // Surface who/where/what for each ledger row so an auditor can read it without extra calls.
 const MOVEMENT_INCLUDE: Prisma.StockMovementInclude = {
@@ -13,6 +14,7 @@ const MOVEMENT_INCLUDE: Prisma.StockMovementInclude = {
   supplier: true,
   location: true,
   user: true,
+  stockMovementType: true,
 };
 
 @Injectable()
@@ -23,9 +25,17 @@ export class StockMovementsService {
     userId: string,
     body: CreateStockMovementDTO,
   ): Promise<StockMovement> {
-    const { productId, type, quantity, note, supplierId, locationId } = body;
+    const { productId, stockMovementTypeId, quantity, note, supplierId, locationId } = body;
 
-    const delta = this.resolveDelta(type, quantity);
+    const movementType = await this.prisma.stockMovementType.findFirst({
+      where: { id: stockMovementTypeId, isArchived: false },
+    });
+    if (!movementType) throw new NotFoundException('Stock movement type not found');
+    if (movementType.systemKey === STOCK_MOVEMENT_SYSTEM_KEY.TRANSFER) {
+      throw new BadRequestException('Transfer movements are not supported yet');
+    }
+
+    const delta = this.resolveDelta(movementType.effect, quantity);
 
     await this.validateRefs(productId, supplierId, locationId);
 
@@ -46,7 +56,7 @@ export class StockMovementsService {
 
       return tx.stockMovement.create({
         data: {
-          type,
+          stockMovementTypeId,
           quantityChange: delta,
           quantityAfter: updated.quantityOnHand,
           note,
@@ -93,33 +103,29 @@ export class StockMovementsService {
     return movement;
   }
 
-  // Translates (type, quantity) into a signed delta and enforces the per-type quantity rules.
-  private resolveDelta(type: StockMovementType, quantity: number): number {
-    if (type === StockMovementType.TRANSFER) {
-      throw new BadRequestException('TRANSFER movements are not supported yet');
-    }
-
-    if (type === StockMovementType.ADJUSTMENT) {
+  // Translates (effect, quantity) into a signed delta and enforces the effect's quantity rules.
+  private resolveDelta(effect: StockMovementEffect, quantity: number): number {
+    if (effect === StockMovementEffect.ADJUSTMENT) {
       if (quantity === 0) {
-        throw new BadRequestException('ADJUSTMENT quantity must not be zero');
+        throw new BadRequestException('Adjustment quantity must not be zero');
       }
       return quantity;
     }
 
     if (quantity < 1) {
-      throw new BadRequestException(`${type} quantity must be at least 1`);
+      throw new BadRequestException('Quantity must be at least 1');
     }
 
-    return type === StockMovementType.SALE ? -quantity : quantity;
+    return effect === StockMovementEffect.DECREASE ? -quantity : quantity;
   }
 
   private buildWhere(filter: FilterStockMovementsDTO): Prisma.StockMovementWhereInput {
-    const { productId, productUnitId, type, dateFrom, dateTo } = filter;
+    const { productId, productUnitId, stockMovementTypeId, dateFrom, dateTo } = filter;
     const where: Prisma.StockMovementWhereInput = {};
 
     if (productId) where.productId = productId;
     if (productUnitId) where.productUnitId = productUnitId;
-    if (type) where.type = type;
+    if (stockMovementTypeId) where.stockMovementTypeId = stockMovementTypeId;
 
     if (dateFrom || dateTo) {
       where.createdAt = {

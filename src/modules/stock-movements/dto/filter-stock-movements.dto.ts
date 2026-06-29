@@ -1,5 +1,4 @@
-import { IsDateString, IsEnum, IsOptional, IsUUID } from 'class-validator';
-import { StockMovementType } from '@prisma/client';
+import { IsDateString, IsOptional, IsUUID } from 'class-validator';
 
 import { PaginationQueryDTO } from '../../../common/dto/pagination-query.dto';
 
@@ -13,8 +12,8 @@ export class FilterStockMovementsDTO extends PaginationQueryDTO {
   productUnitId?: string;
 
   @IsOptional()
-  @IsEnum(StockMovementType)
-  type?: StockMovementType;
+  @IsUUID()
+  stockMovementTypeId?: string;
 
   @IsOptional()
   @IsDateString()

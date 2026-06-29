@@ -6,11 +6,11 @@ import {
   Product,
   ProductUnitStatus,
   SaleStatus,
-  StockMovementType,
 } from '@prisma/client';
 
 import { PrismaService } from '../../core/database/prisma.service';
 import { PosService } from './pos.service';
+import { STOCK_MOVEMENT_SYSTEM_KEY } from '../stock-movement-types/constants/stock-movement-type.constants';
 
 const PRODUCT_ID = '11111111-1111-1111-1111-111111111111';
 const SERIALIZED_PRODUCT_ID = '22222222-2222-2222-2222-222222222222';
@@ -19,6 +19,7 @@ const LOCATION_ID = '44444444-4444-4444-4444-444444444444';
 const USER_ID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const SALE_ID = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
 const SALE_ITEM_ID = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
+const MOVEMENT_TYPE_ID = 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee';
 
 interface CreatedSaleData {
   id?: string;
@@ -50,6 +51,7 @@ interface PosTxMock {
     update: jest.Mock;
   };
   saleItem: { create: jest.Mock };
+  stockMovementType: { findFirst: jest.Mock };
   stockMovement: { create: jest.Mock };
 }
 
@@ -194,6 +196,9 @@ describe('PosService', () => {
         update: jest.fn(),
       },
       saleItem: { create: jest.fn().mockResolvedValue({ id: SALE_ITEM_ID }) },
+      stockMovementType: {
+        findFirst: jest.fn().mockResolvedValue({ id: MOVEMENT_TYPE_ID }),
+      },
       stockMovement: { create: jest.fn().mockResolvedValue({ id: 'movement-1' }) },
     };
 
@@ -240,7 +245,7 @@ describe('PosService', () => {
       tx.stockMovement.create,
     );
     expect(movementCreateArg.data).toMatchObject({
-      type: StockMovementType.SALE,
+      stockMovementTypeId: MOVEMENT_TYPE_ID,
       quantityChange: -2,
       quantityAfter: 8,
       productId: PRODUCT_ID,
@@ -287,7 +292,7 @@ describe('PosService', () => {
       tx.stockMovement.create,
     );
     expect(movementCreateArg.data).toMatchObject({
-      type: StockMovementType.SALE,
+      stockMovementTypeId: MOVEMENT_TYPE_ID,
       quantityChange: -1,
       productUnitId: PRODUCT_UNIT_ID,
       locationId: LOCATION_ID,
@@ -335,7 +340,8 @@ describe('PosService', () => {
       stockMovements: [
         {
           id: 'movement-sale',
-          type: StockMovementType.SALE,
+          stockMovementTypeId: MOVEMENT_TYPE_ID,
+          stockMovementType: { systemKey: STOCK_MOVEMENT_SYSTEM_KEY.SALE },
           saleItemId: SALE_ITEM_ID,
           locationId: LOCATION_ID,
         },
@@ -356,7 +362,7 @@ describe('PosService', () => {
       tx.stockMovement.create,
     );
     expect(movementCreateArg.data).toMatchObject({
-      type: StockMovementType.RETURN,
+      stockMovementTypeId: MOVEMENT_TYPE_ID,
       quantityChange: 2,
       quantityAfter: 10,
       note: 'Cashier mistake',

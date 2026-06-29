@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, ProductUnitStatus, StockMovementType } from '@prisma/client';
+import { Prisma, ProductUnitStatus, StockMovementEffect } from '@prisma/client';
 
 import { PrismaService } from '../../core/database/prisma.service';
 import { PaginatedResponse } from '../../common/responses/paginated-api.response';
@@ -22,6 +22,11 @@ import {
   ProductUnitWithRelations,
   RegisterProductUnitsResult,
 } from './types/product-unit.types';
+import {
+  STOCK_MOVEMENT_SYSTEM_KEY,
+  StockMovementSystemKey,
+} from '../stock-movement-types/constants/stock-movement-type.constants';
+import { getSystemStockMovementTypeId } from '../stock-movement-types/utils/stock-movement-type.utils';
 
 type UnitIdentifierField = 'assetTag' | 'serialNumber' | 'rfidTag';
 type UnitIdentifierMap = Partial<Record<UnitIdentifierField, string | null | undefined>>;
@@ -54,7 +59,9 @@ export class ProductUnitService {
     userId: string,
     body: RegisterProductUnitsDTO,
   ): Promise<RegisterProductUnitsResult> {
-    const movementType = body.movementType ?? StockMovementType.INITIAL;
+    const stockMovementTypeId = await this.resolveRegistrationMovementTypeId(
+      body.stockMovementTypeId,
+    );
     const units = body.units.map((unit) => this.normalizeUnitInput(unit));
 
     this.ensureUnitsHaveIdentifiers(units);
@@ -102,7 +109,7 @@ export class ProductUnitService {
         movements.push(
           await tx.stockMovement.create({
             data: {
-              type: movementType,
+              stockMovementTypeId,
               quantityChange: 1,
               quantityAfter: firstQuantityAfter + index,
               note: body.note,
@@ -237,9 +244,14 @@ export class ProductUnitService {
         include: PRODUCT_UNIT_INCLUDE,
       });
 
+      const stockMovementTypeId = await getSystemStockMovementTypeId(
+        tx,
+        this.resolveStatusMovementSystemKey(current.status, body.status, delta),
+      );
+
       const movement = await tx.stockMovement.create({
         data: {
-          type: this.resolveStatusMovementType(current.status, body.status, delta),
+          stockMovementTypeId,
           quantityChange: delta,
           quantityAfter: updatedProduct.quantityOnHand,
           note: body.note,
@@ -459,15 +471,21 @@ export class ProductUnitService {
     return nextCounted ? 1 : -1;
   }
 
-  private resolveStatusMovementType(
+  private resolveStatusMovementSystemKey(
     currentStatus: ProductUnitStatus,
     nextStatus: ProductUnitStatus,
     delta: number,
-  ): StockMovementType {
-    if (delta < 0 && nextStatus === ProductUnitStatus.SOLD) return StockMovementType.SALE;
-    if (delta > 0 && currentStatus === ProductUnitStatus.SOLD) return StockMovementType.RETURN;
-    if (delta > 0 && nextStatus === ProductUnitStatus.RETURNED) return StockMovementType.RETURN;
-    return StockMovementType.ADJUSTMENT;
+  ): StockMovementSystemKey {
+    if (delta < 0 && nextStatus === ProductUnitStatus.SOLD) {
+      return STOCK_MOVEMENT_SYSTEM_KEY.SALE;
+    }
+    if (delta > 0 && currentStatus === ProductUnitStatus.SOLD) {
+      return STOCK_MOVEMENT_SYSTEM_KEY.RETURN;
+    }
+    if (delta > 0 && nextStatus === ProductUnitStatus.RETURNED) {
+      return STOCK_MOVEMENT_SYSTEM_KEY.RETURN;
+    }
+    return STOCK_MOVEMENT_SYSTEM_KEY.ADJUSTMENT;
   }
 
   private isStockCountedStatus(status: ProductUnitStatus): boolean {
@@ -488,5 +506,24 @@ export class ProductUnitService {
       where: { id: supplierId, isArchived: false },
     });
     if (!supplier) throw new NotFoundException('Supplier not found');
+  }
+
+  private async resolveRegistrationMovementTypeId(
+    stockMovementTypeId?: string,
+  ): Promise<string> {
+    if (!stockMovementTypeId) {
+      return getSystemStockMovementTypeId(this.prisma, STOCK_MOVEMENT_SYSTEM_KEY.INITIAL);
+    }
+
+    const movementType = await this.prisma.stockMovementType.findFirst({
+      where: { id: stockMovementTypeId, isArchived: false },
+      select: { id: true, effect: true },
+    });
+    if (!movementType) throw new NotFoundException('Stock movement type not found');
+    if (movementType.effect !== StockMovementEffect.INCREASE) {
+      throw new BadRequestException('Registering product units requires an increasing movement type');
+    }
+
+    return movementType.id;
   }
 }

@@ -35,6 +35,7 @@ model Organization {
 
   users               User[] // legacy direct membership (pre-Better-Auth)
   categories          Category[]
+  stockMovementTypes  StockMovementType[]
   suppliers           Supplier[]
   supplierLinks       SupplierLink[]
   locations           Location[]
@@ -210,6 +211,30 @@ model Category {
   @@map("categories")
 }
 
+// Tenant-configurable labels for stock changes. `systemKey` is reserved for workflows that
+// must resolve a stable type (POS sales, returns, imports) even when its display name changes.
+model StockMovementType {
+  id          String              @id @default(uuid())
+  name        String
+  description String?
+  effect      StockMovementEffect
+  systemKey   String?             @map("system_key")
+  isArchived  Boolean             @default(false) @map("is_archived")
+
+  organizationId String       @default(dbgenerated("current_setting('app.current_org_id'::text, true)")) @map("organization_id")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  stockMovements StockMovement[]
+
+  @@unique([organizationId, name])
+  @@unique([organizationId, systemKey])
+  @@index([organizationId])
+  @@map("stock_movement_types")
+}
+
 // Vendor a product is purchased from, so stock can be re-ordered when it runs out.
 model Supplier {
   id          String  @id @default(uuid())
@@ -369,14 +394,17 @@ model ProductUnit {
 
 // Append-only audit ledger of every stock change. quantityAfter is a snapshot for trustworthy counts.
 model StockMovement {
-  id             String            @id @default(uuid())
-  type           StockMovementType
-  quantityChange Int               @map("quantity_change")
-  quantityAfter  Int               @map("quantity_after")
-  note           String?
+  id                  String                   @id @default(uuid())
+  legacyType          LegacyStockMovementType? @map("type")
+  quantityChange      Int                      @map("quantity_change")
+  quantityAfter       Int                      @map("quantity_after")
+  note                String?
 
   organizationId String       @default(dbgenerated("current_setting('app.current_org_id'::text, true)")) @map("organization_id")
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  stockMovementTypeId String?            @map("stock_movement_type_id")
+  stockMovementType   StockMovementType? @relation(fields: [stockMovementTypeId], references: [id], onDelete: Restrict)
 
   productId String  @map("product_id")
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -402,6 +430,7 @@ model StockMovement {
   createdAt DateTime @default(now()) @map("created_at")
 
   @@index([organizationId])
+  @@index([stockMovementTypeId])
   @@index([productId])
   @@index([productUnitId])
   @@index([supplierId])
@@ -561,13 +590,23 @@ enum ProductUnitStatus {
   LOST
 }
 
-enum StockMovementType {
+enum StockMovementEffect {
+  INCREASE
+  DECREASE
+  ADJUSTMENT
+}
+
+// Transitional enum retained during the expand/backfill deployment. Remove it only after every
+// stock movement has a stockMovementTypeId and the TypeScript backfill has been verified.
+enum LegacyStockMovementType {
   PURCHASE
   SALE
   ADJUSTMENT
   TRANSFER
   RETURN
   INITIAL
+
+  @@map("StockMovementType")
 }
 
 enum SupplierPlatform {

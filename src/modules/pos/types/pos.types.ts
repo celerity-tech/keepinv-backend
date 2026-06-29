@@ -27,6 +27,7 @@ export const POS_SALE_INCLUDE = {
     include: {
       product: true,
       productUnit: true,
+      stockMovementType: true,
     },
     orderBy: { createdAt: 'asc' },
   },

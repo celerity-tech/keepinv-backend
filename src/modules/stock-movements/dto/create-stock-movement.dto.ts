@@ -1,20 +1,22 @@
 import { Transform } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
-import { StockMovementType } from '@prisma/client';
+import { IsInt, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+
+const trim = ({ value }: { value: unknown }): unknown =>
+  typeof value === 'string' ? value.trim() : value;
 
 export class CreateStockMovementDTO {
   @IsUUID()
   productId!: string;
 
-  @IsEnum(StockMovementType)
-  type!: StockMovementType;
+  @IsUUID()
+  stockMovementTypeId!: string;
 
-  // Sign/zero rules are enforced in the service (ADJUSTMENT may be negative), so no @Min here.
+  // Sign/zero rules depend on the selected type's effect, so they are enforced in the service.
   @IsInt()
   quantity!: number;
 
   @IsOptional()
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @Transform(trim)
   @IsString()
   @MaxLength(255)
   note?: string;

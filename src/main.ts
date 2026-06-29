@@ -18,7 +18,22 @@ async function bootstrap() {
   });
   app.enableShutdownHooks();
 
-  app.use(helmet());
+  // Pin HTTPS hard. Without `preload`, a fresh device is only HSTS-pinned after its
+  // first direct https response from this host; until then a plaintext request (e.g. a
+  // page loaded over http) is 301'd to https by the edge — and browsers downgrade a
+  // redirected POST to GET, so an upload silently becomes `GET /products/:id/image` 404.
+  // With `preload` (once api.keepinv.com is on the HSTS preload list) browsers never send
+  // plaintext at all, so the POST survives. 2y max-age + includeSubDomains are preload
+  // prerequisites. All other helmet defaults are preserved.
+  app.use(
+    helmet({
+      hsts: {
+        maxAge: 63072000,
+        includeSubDomains: true,
+        preload: true,
+      },
+    }),
+  );
 
   app.enableCors({
     origin: env.CORS_ALLOWED_ORIGINS,

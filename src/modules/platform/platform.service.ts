@@ -9,6 +9,7 @@ import type { SafeUser } from '../users/types/users.types';
 import { CreateOrganizationDTO } from './dto/create-organization.dto';
 import { CreateOrgUserDTO } from './dto/create-org-user.dto';
 import { UpdateOrganizationDTO } from './dto/update-organization.dto';
+import { DEFAULT_STOCK_MOVEMENT_TYPES } from '../stock-movement-types/constants/stock-movement-type.constants';
 
 export interface ProvisionResult {
   organization: Organization;
@@ -39,6 +40,8 @@ export class PlatformService {
 
     try {
       return await authPrisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT set_config(${PG_BYPASS_SETTING}, 'on', true)`;
+
         const slugTaken = await tx.organization.findUnique({ where: { slug } });
         if (slugTaken) throw new ConflictException('Organization slug already in use');
 
@@ -54,6 +57,12 @@ export class PlatformService {
         const admin = await createCredentialUser(tx, body.admin);
         await tx.member.create({
           data: { organizationId: organization.id, userId: admin.id, role: 'owner' },
+        });
+        await tx.stockMovementType.createMany({
+          data: DEFAULT_STOCK_MOVEMENT_TYPES.map((movementType) => ({
+            ...movementType,
+            organizationId: organization.id,
+          })),
         });
 
         return { organization, admin };
@@ -123,6 +132,7 @@ export class PlatformService {
       await tx.inventoryAuditScan.deleteMany({ where: { organizationId } });
       await tx.inventoryAudit.deleteMany({ where: { organizationId } });
       await tx.stockMovement.deleteMany({ where: { organizationId } });
+      await tx.stockMovementType.deleteMany({ where: { organizationId } });
       await tx.saleItem.deleteMany({ where: { organizationId } });
       await tx.sale.deleteMany({ where: { organizationId } });
       await tx.productUnit.deleteMany({ where: { organizationId } });
