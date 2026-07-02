@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { Prisma, StockMovement, StockMovementEffect } from '@prisma/client';
 
 import { PrismaService } from '../../core/database/prisma.service';
-import { PaginatedResponse } from '../../common/responses/paginated-api.response';
+import { PaginatedResponse, paginationMeta } from '../../common/responses/paginated-api.response';
 import { CreateStockMovementDTO } from './dto/create-stock-movement.dto';
 import { FilterStockMovementsDTO } from './dto/filter-stock-movements.dto';
 import { STOCK_MOVEMENT_SYSTEM_KEY } from '../stock-movement-types/constants/stock-movement-type.constants';
@@ -37,13 +37,13 @@ export class StockMovementsService {
 
     const delta = this.resolveDelta(movementType.effect, quantity);
 
-    await this.validateRefs(productId, supplierId, locationId);
-
-    // Atomic increment + ledger write in one transaction. The increment is race-safe, and the
-    // returned balance is the trustworthy `quantityAfter` snapshot. A negative result throws,
-    // which rolls the whole transaction back.
+    // Atomic ref-check + increment + ledger write in one transaction. Validating refs inside the tx
+    // closes the window where the product could be archived between the check and the increment. The
+    // increment is race-safe, and the returned balance is the trustworthy `quantityAfter` snapshot;
+    // a negative result throws and rolls the whole transaction back.
     return this.prisma.$transaction(async (tx) => {
       await this.prisma.setTenantContext(tx);
+      await this.validateRefs(tx, productId, supplierId, locationId);
 
       const updated = await tx.product.update({
         where: { id: productId },
@@ -88,10 +88,7 @@ export class StockMovementsService {
       return { data: rows, total: count };
     });
 
-    return {
-      data,
-      meta: { total, page, limit, lastPage: Math.max(1, Math.ceil(total / limit)) },
-    };
+    return { data, meta: paginationMeta(total, page, limit) };
   }
 
   async getStockMovement(id: string): Promise<StockMovement> {
@@ -138,24 +135,25 @@ export class StockMovementsService {
   }
 
   private async validateRefs(
+    client: Prisma.TransactionClient,
     productId: string,
     supplierId?: string,
     locationId?: string,
   ): Promise<void> {
-    const product = await this.prisma.product.findFirst({
+    const product = await client.product.findFirst({
       where: { id: productId, isArchived: false },
     });
     if (!product) throw new NotFoundException('Product not found');
 
     if (supplierId) {
-      const supplier = await this.prisma.supplier.findFirst({
+      const supplier = await client.supplier.findFirst({
         where: { id: supplierId, isArchived: false },
       });
       if (!supplier) throw new NotFoundException('Supplier not found');
     }
 
     if (locationId) {
-      const location = await this.prisma.location.findFirst({
+      const location = await client.location.findFirst({
         where: { id: locationId, isArchived: false },
       });
       if (!location) throw new NotFoundException('Location not found');

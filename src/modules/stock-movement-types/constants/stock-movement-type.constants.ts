@@ -49,14 +49,3 @@ export const DEFAULT_STOCK_MOVEMENT_TYPES = [
     isArchived: false,
   },
 ] as const;
-
-export const STOCK_MOVEMENT_TYPE_BACKFILL_DEFAULTS = [
-  ...DEFAULT_STOCK_MOVEMENT_TYPES,
-  {
-    name: 'Transfer',
-    description: 'Legacy transfer movement (new transfers are not supported yet)',
-    effect: StockMovementEffect.ADJUSTMENT,
-    systemKey: STOCK_MOVEMENT_SYSTEM_KEY.TRANSFER,
-    isArchived: true,
-  },
-] as const;

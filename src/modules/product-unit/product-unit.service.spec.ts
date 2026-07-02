@@ -245,7 +245,7 @@ describe('ProductUnitService', () => {
 
       const where = prisma.productUnit.findMany.mock.calls[0][0].where;
       expect(where.status).toEqual({
-        notIn: [ProductUnitStatus.SOLD, ProductUnitStatus.LOST],
+        notIn: [ProductUnitStatus.SOLD, ProductUnitStatus.LOST, ProductUnitStatus.DISPOSED],
       });
     });
 

@@ -17,7 +17,6 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "backfill:stock-movement-types": "bun scripts/backfill-stock-movement-types.ts",
     "seed:products": "bun prisma/seed-motorshop-products.ts"
   },
   "dependencies": {
@@ -34,6 +33,7 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
     "cloudinary": "^2.10.0",
+    "date-fns": "^4.4.0",
     "helmet": "^8.1.0",
     "pg": "^8.20.0",
     "reflect-metadata": "^0.2.2",

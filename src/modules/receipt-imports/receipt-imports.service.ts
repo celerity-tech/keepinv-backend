@@ -28,7 +28,7 @@ type PreviewItem = {
   reason: string;
 };
 
-type ReceiptImportPreview = {
+export type ReceiptImportPreview = {
   supplier: {
     action: 'MATCH_SUPPLIER' | 'CREATE_SUPPLIER';
     matchedSupplier: Supplier | null;
@@ -37,7 +37,7 @@ type ReceiptImportPreview = {
   canCommit: boolean;
 };
 
-type ReceiptImportCommit = ReceiptImportPreview & {
+export type ReceiptImportCommit = ReceiptImportPreview & {
   createdProducts: number;
   matchedProducts: number;
   stockMovementsCreated: number;
@@ -94,8 +94,11 @@ export class ReceiptImportsService {
         tx,
         STOCK_MOVEMENT_SYSTEM_KEY.PURCHASE,
       );
-      await this.ensureIdempotencyKeyUnused(tx, body);
+      await this.reserveIdempotencyKey(tx, body);
 
+      // One batched match lookup for the whole receipt (was 3 queries per line item). Products
+      // created below are folded back into the map so later lines match them.
+      const matches = await this.buildProductMatchMap(body.items, tx);
       const supplier = await this.findOrCreateSupplier(tx, body);
       let createdProducts = 0;
       let matchedProducts = 0;
@@ -104,7 +107,14 @@ export class ReceiptImportsService {
       const committedItems: PreviewItem[] = [];
 
       for (const [index, item] of body.items.entries()) {
-        const { product, created } = await this.findOrCreateProduct(tx, item, body, supplier.id, index + 1);
+        const { product, created } = await this.findOrCreateProduct(
+          tx,
+          item,
+          body,
+          supplier.id,
+          index + 1,
+          matches,
+        );
 
         if (created) createdProducts += 1;
         else matchedProducts += 1;
@@ -238,26 +248,29 @@ export class ReceiptImportsService {
     return fields;
   }
 
-  private async buildProductMatchMap(items: ReceiptImportItemDTO[]): Promise<ProductMatchMap> {
+  private async buildProductMatchMap(
+    items: ReceiptImportItemDTO[],
+    client: Prisma.TransactionClient | PrismaService = this.prisma,
+  ): Promise<ProductMatchMap> {
     const barcodes = [...new Set(items.map((item) => item.barcode).filter((value): value is string => Boolean(value)))];
     const skus = [...new Set(items.map((item) => item.sku).filter((value): value is string => Boolean(value)))];
     const names = [...new Set(items.map((item) => this.normalizeName(item.normalizedName || item.rawName)))];
 
     const [barcodeMatches, skuMatches, nameMatches] = await Promise.all([
       barcodes.length > 0
-        ? this.prisma.product.findMany({
+        ? client.product.findMany({
             where: { barcode: { in: barcodes }, isArchived: false },
             select: PRODUCT_SELECT,
           })
         : [],
       skus.length > 0
-        ? this.prisma.product.findMany({
+        ? client.product.findMany({
             where: { sku: { in: skus }, isArchived: false },
             select: PRODUCT_SELECT,
           })
         : [],
       names.length > 0
-        ? this.prisma.product.findMany({
+        ? client.product.findMany({
             where: { OR: names.map((name) => ({ name: { equals: name, mode: 'insensitive' } })), isArchived: false },
             select: PRODUCT_SELECT,
           })
@@ -298,20 +311,23 @@ export class ReceiptImportsService {
     return matches.byName.get(normalizedName.toLowerCase()) ?? null;
   }
 
-  private async ensureIdempotencyKeyUnused(
+  private async reserveIdempotencyKey(
     tx: Prisma.TransactionClient,
     body: ReceiptImportDTO,
   ): Promise<void> {
     const key = body.source?.idempotencyKey;
     if (!key) return;
 
-    const existing = await tx.stockMovement.findFirst({
-      where: { note: { contains: `key=${key}` } },
-      select: { id: true },
-    });
-
-    if (existing) {
-      throw new ConflictException('Receipt import idempotency key was already processed');
+    // Claim the key by inserting a row; the per-tenant unique constraint makes a concurrent or
+    // repeated commit fail fast instead of double-stocking. organizationId is set from the tenant
+    // context by the column default.
+    try {
+      await tx.receiptImport.create({ data: { idempotencyKey: key } });
+    } catch (error) {
+      if (this.isUniqueConstraintError(error)) {
+        throw new ConflictException('Receipt import idempotency key was already processed');
+      }
+      throw error;
     }
   }
 
@@ -339,9 +355,10 @@ export class ReceiptImportsService {
     body: ReceiptImportDTO,
     supplierId: string,
     line: number,
+    matches: ProductMatchMap,
   ): Promise<ProductResolution> {
     const normalizedName = this.normalizeName(item.normalizedName || item.rawName);
-    const existing = await this.findProduct(item, normalizedName, tx);
+    const existing = this.findProductInMap(item, normalizedName, matches);
     if (existing) return { product: existing, created: false };
 
     const categoryId = this.resolveCategoryId(item, body);
@@ -366,6 +383,9 @@ export class ReceiptImportsService {
         select: PRODUCT_SELECT,
       });
 
+      // Fold the new product into the match map so a later line with the same name/sku/barcode
+      // resolves to it instead of creating a duplicate.
+      this.indexProduct(matches, product);
       return { product, created: true };
     } catch (error) {
       if (this.isUniqueConstraintError(error)) {
@@ -375,31 +395,10 @@ export class ReceiptImportsService {
     }
   }
 
-  private async findProduct(
-    item: ReceiptImportItemDTO,
-    normalizedName: string,
-    tx: Prisma.TransactionClient | PrismaService = this.prisma,
-  ): Promise<MatchedProduct | null> {
-    if (item.barcode) {
-      const product = await tx.product.findFirst({
-        where: { barcode: item.barcode, isArchived: false },
-        select: PRODUCT_SELECT,
-      });
-      if (product) return product;
-    }
-
-    if (item.sku) {
-      const product = await tx.product.findFirst({
-        where: { sku: item.sku, isArchived: false },
-        select: PRODUCT_SELECT,
-      });
-      if (product) return product;
-    }
-
-    return tx.product.findFirst({
-      where: { name: { equals: normalizedName, mode: 'insensitive' }, isArchived: false },
-      select: PRODUCT_SELECT,
-    });
+  private indexProduct(matches: ProductMatchMap, product: MatchedProduct): void {
+    if (product.barcode) matches.byBarcode.set(product.barcode, product);
+    matches.bySku.set(product.sku, product);
+    matches.byName.set(this.normalizeName(product.name).toLowerCase(), product);
   }
 
   private findSupplierByName(name: string): Promise<Supplier | null> {
@@ -412,10 +411,12 @@ export class ReceiptImportsService {
     return item.categoryId ?? body.defaults.categoryId;
   }
 
-  private resolveSellingPrice(item: ReceiptImportItemDTO, body: ReceiptImportDTO): number {
+  private resolveSellingPrice(item: ReceiptImportItemDTO, body: ReceiptImportDTO): Prisma.Decimal {
     const markup = body.defaults.sellingPriceMarkupPercent;
-    if (markup === undefined) return 0;
-    return Number((item.unitCost * (1 + markup / 100)).toFixed(2));
+    if (markup === undefined) return new Prisma.Decimal(0);
+    // Decimal money math (no binary-float drift), rounded to the 2dp the column stores.
+    const multiplier = new Prisma.Decimal(1).plus(new Prisma.Decimal(markup).dividedBy(100));
+    return new Prisma.Decimal(item.unitCost).times(multiplier).toDecimalPlaces(2);
   }
 
   private generateSku(name: string, body: ReceiptImportDTO, line: number): string {
@@ -435,12 +436,12 @@ export class ReceiptImportsService {
   }
 
   private buildMovementNote(body: ReceiptImportDTO, item: ReceiptImportItemDTO): string {
+    // Idempotency now lives in the receipt_imports table, so the note is purely a human audit trail.
     const parts = [
       'Hermes receipt import',
       body.receipt.receiptNumber ? `receipt=${body.receipt.receiptNumber}` : null,
       `supplier=${body.supplier.name}`,
       `unitCost=${item.unitCost}`,
-      body.source?.idempotencyKey ? `key=${body.source.idempotencyKey}` : null,
     ].filter(Boolean);
 
     return parts.join(' | ').slice(0, 255);

@@ -185,8 +185,9 @@ describe('StockMovementsService', () => {
     it('throws when the product does not exist or is archived', async () => {
       prisma.product.findFirst.mockResolvedValue(null);
 
+      // Refs are validated inside the transaction now (so it rolls back), so the tx is entered.
       await expect(record({})).rejects.toThrow(NotFoundException);
-      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(prisma.$transaction).toHaveBeenCalled();
     });
   });
 

@@ -283,6 +283,7 @@ describe('PosService', () => {
             ProductUnitStatus.IN_STOCK,
             ProductUnitStatus.RESERVED,
             ProductUnitStatus.RETURNED,
+            ProductUnitStatus.MISPLACED,
           ],
         },
       },

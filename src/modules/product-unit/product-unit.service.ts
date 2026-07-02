@@ -7,7 +7,7 @@ import {
 import { Prisma, ProductUnitStatus, StockMovementEffect } from '@prisma/client';
 
 import { PrismaService } from '../../core/database/prisma.service';
-import { PaginatedResponse } from '../../common/responses/paginated-api.response';
+import { PaginatedResponse, paginationMeta } from '../../common/responses/paginated-api.response';
 import { RegisterProductUnitInputDTO, RegisterProductUnitsDTO } from './dto/register-product-units.dto';
 import { FilterProductUnitsDTO } from './dto/filter-product-units.dto';
 import { UpdateProductUnitDTO } from './dto/update-product-unit.dto';
@@ -27,6 +27,12 @@ import {
   StockMovementSystemKey,
 } from '../stock-movement-types/constants/stock-movement-type.constants';
 import { getSystemStockMovementTypeId } from '../stock-movement-types/utils/stock-movement-type.utils';
+import {
+  DEFAULT_HIDDEN_UNIT_STATUSES,
+  LOCATION_CLEARED_STATUSES,
+  STOCK_COUNTED_STATUSES,
+  TAG_WRITE_BLOCKED_STATUSES,
+} from '../../common/constants/product-unit-status.constants';
 
 type UnitIdentifierField = 'assetTag' | 'serialNumber' | 'rfidTag';
 type UnitIdentifierMap = Partial<Record<UnitIdentifierField, string | null | undefined>>;
@@ -34,22 +40,6 @@ type ProductUnitPatchData = Partial<Record<UnitIdentifierField, string | null>> 
   locationId?: string | null;
 };
 type ProductUnitForWrite = Prisma.ProductUnitGetPayload<{ include: { product: true } }>;
-
-const STOCK_COUNTED_STATUSES = new Set<ProductUnitStatus>([
-  ProductUnitStatus.IN_STOCK,
-  ProductUnitStatus.RESERVED,
-  ProductUnitStatus.RETURNED,
-]);
-
-const LOCATION_CLEARED_STATUSES = new Set<ProductUnitStatus>([
-  ProductUnitStatus.SOLD,
-  ProductUnitStatus.LOST,
-]);
-
-const TAG_WRITE_BLOCKED_STATUSES = new Set<ProductUnitStatus>([
-  ProductUnitStatus.SOLD,
-  ProductUnitStatus.LOST,
-]);
 
 @Injectable()
 export class ProductUnitService {
@@ -273,8 +263,8 @@ export class ProductUnitService {
     body: RetireProductUnitDTO,
   ): Promise<ProductUnitStatusChangeResult> {
     return this.changeProductUnitStatus(userId, id, {
-      status: ProductUnitStatus.LOST,
-      note: body.note ?? 'Product unit retired',
+      status: ProductUnitStatus.DISPOSED,
+      note: body.note ?? 'Product unit disposed',
     });
   }
 
@@ -302,10 +292,7 @@ export class ProductUnitService {
       return { data: rows, total: count };
     });
 
-    return {
-      data,
-      meta: { total, page, limit, lastPage: Math.max(1, Math.ceil(total / limit)) },
-    };
+    return { data, meta: paginationMeta(total, page, limit) };
   }
 
   async getProductUnit(id: string): Promise<ProductUnitWithRelations> {
@@ -327,14 +314,15 @@ export class ProductUnitService {
   }
 
   private buildWhere(filter: FilterProductUnitsDTO): Prisma.ProductUnitWhereInput {
-    const { productId, locationId, status, search } = filter;
+    const { productId, locationId, status, untagged, search } = filter;
     const where: Prisma.ProductUnitWhereInput = {
       product: { isArchived: false },
     };
 
     if (productId) where.productId = productId;
     if (locationId) where.locationId = locationId;
-    where.status = status ?? { notIn: [ProductUnitStatus.SOLD, ProductUnitStatus.LOST] };
+    if (untagged) where.rfidTag = null;
+    where.status = status ?? { notIn: [...DEFAULT_HIDDEN_UNIT_STATUSES] };
 
     if (search) {
       where.OR = [

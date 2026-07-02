@@ -66,9 +66,10 @@ export class InventoryAuditController {
 
   @Post(':id/complete')
   async completeAudit(
+    @Session() session: UserSession,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<InventoryAuditReport> {
-    return this.inventoryAuditService.completeAudit(id);
+    return this.inventoryAuditService.completeAudit(session.user.id, id);
   }
 
   @Post(':id/cancel')

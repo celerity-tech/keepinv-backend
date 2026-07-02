@@ -4,10 +4,17 @@ import {
   InventoryAuditScanResult,
   InventoryAuditStatus,
   Prisma,
+  ProductUnitStatus,
 } from '@prisma/client';
 
 import { PrismaService } from '../../core/database/prisma.service';
-import { PaginatedResponse } from '../../common/responses/paginated-api.response';
+import { PaginatedResponse, paginationMeta } from '../../common/responses/paginated-api.response';
+import {
+  AUDIT_MANAGED_STATUSES,
+  STOCK_COUNTED_STATUSES,
+} from '../../common/constants/product-unit-status.constants';
+import { STOCK_MOVEMENT_SYSTEM_KEY } from '../stock-movement-types/constants/stock-movement-type.constants';
+import { getSystemStockMovementTypeId } from '../stock-movement-types/utils/stock-movement-type.utils';
 import { CreateInventoryAuditDTO } from './dto/create-inventory-audit.dto';
 import { AddInventoryAuditScansDTO } from './dto/add-inventory-audit-scans.dto';
 import { FilterInventoryAuditsDTO } from './dto/filter-inventory-audits.dto';
@@ -19,12 +26,22 @@ import {
   INVENTORY_AUDIT_INCLUDE,
   InventoryAuditListItem,
   InventoryAuditReport,
+  InventoryAuditSummary,
   PRODUCT_UNIT_AUDIT_INCLUDE,
 } from './types/inventory-audit.types';
 
 type PrismaClientLike = PrismaService | Prisma.TransactionClient;
 
 const MAX_SCAN_VALUES_PER_BATCH = 1000;
+
+/** A status transition an audit intends to apply to one unit on completion. */
+interface UnitTransition {
+  unitId: string;
+  productId: string;
+  from: ProductUnitStatus;
+  to: ProductUnitStatus;
+  delta: number;
+}
 
 @Injectable()
 export class InventoryAuditService {
@@ -72,21 +89,38 @@ export class InventoryAuditService {
         take: limit,
       });
       const count = await tx.inventoryAudit.count({ where });
-      return { audits: rows, total: count };
+      return { audits: rows as AuditWithRelations[], total: count };
     });
 
-    const data = await Promise.all(
-      audits.map(async (audit) => {
-        const auditWithRelations = audit as AuditWithRelations;
-        const expectedUnits = await this.findExpectedUnits(auditWithRelations.locationId);
-        return this.buildListItem(auditWithRelations, expectedUnits);
-      }),
+    // One grouped count for the whole page instead of a per-audit expected-units query (was N+1).
+    const expectedByLocation = await this.countExpectedUnitsByLocation(
+      audits.map((audit) => audit.locationId),
     );
 
-    return {
-      data,
-      meta: { total, page, limit, lastPage: Math.max(1, Math.ceil(total / limit)) },
-    };
+    const data = audits.map((audit) =>
+      this.buildListItem(audit, expectedByLocation.get(audit.locationId) ?? 0),
+    );
+
+    return { data, meta: paginationMeta(total, page, limit) };
+  }
+
+  private async countExpectedUnitsByLocation(
+    locationIds: string[],
+  ): Promise<Map<string, number>> {
+    const distinct = [...new Set(locationIds)];
+    if (distinct.length === 0) return new Map();
+
+    const groups = await this.prisma.productUnit.groupBy({
+      by: ['locationId'],
+      where: { locationId: { in: distinct }, product: { isArchived: false } },
+      _count: { _all: true },
+    });
+
+    return new Map(
+      groups
+        .filter((group): group is typeof group & { locationId: string } => group.locationId !== null)
+        .map((group) => [group.locationId, group._count._all]),
+    );
   }
 
   async getInventoryAudit(id: string): Promise<InventoryAuditReport> {
@@ -148,7 +182,7 @@ export class InventoryAuditService {
     };
   }
 
-  async completeAudit(id: string): Promise<InventoryAuditReport> {
+  async completeAudit(userId: string, id: string): Promise<InventoryAuditReport> {
     const audit = await this.getAuditHeader(id);
     if (audit.status === InventoryAuditStatus.CANCELLED) {
       throw new BadRequestException('Cancelled audits cannot be completed');
@@ -159,17 +193,167 @@ export class InventoryAuditService {
 
     await this.prisma.$transaction(async (tx) => {
       await this.prisma.setTenantContext(tx);
-      await this.refreshScanResults(audit.id, audit.locationId, tx);
-      await tx.inventoryAudit.update({
-        where: { id },
-        data: {
-          status: InventoryAuditStatus.COMPLETED,
-          completedAt: new Date(),
-        },
+
+      // Claim the audit atomically: whoever flips IN_PROGRESS -> COMPLETED first wins, so a
+      // concurrent second completer sees count 0 and bails without re-applying any stock changes.
+      const claimed = await tx.inventoryAudit.updateMany({
+        where: { id, status: InventoryAuditStatus.IN_PROGRESS },
+        data: { status: InventoryAuditStatus.COMPLETED, completedAt: new Date() },
       });
+      if (claimed.count === 0) return;
+
+      const { unitsByScanValue } = await this.refreshScanResults(id, audit.locationId, tx);
+      await this.reconcileUnitStatuses(tx, audit, unitsByScanValue, userId);
     });
 
     return this.getInventoryAudit(id);
+  }
+
+  /**
+   * Persists what the count found onto the units themselves: unmatched expected units become
+   * MISSING, recovered units return to IN_STOCK, and units found away from home become MISPLACED.
+   * Only touches audit-managed statuses, uses compare-and-set so concurrently sold/changed units are
+   * skipped, and writes ADJUSTMENT movements for the units whose on-hand accounting actually shifts.
+   */
+  private async reconcileUnitStatuses(
+    tx: Prisma.TransactionClient,
+    audit: { id: string; auditNo: string; locationId: string },
+    unitsByScanValue: Map<string, AuditProductUnit>,
+    userId: string,
+  ): Promise<void> {
+    const transitions = await this.planUnitTransitions(tx, audit, unitsByScanValue);
+    if (transitions.length === 0) return;
+
+    const adjustmentTypeId = await getSystemStockMovementTypeId(
+      tx,
+      STOCK_MOVEMENT_SYSTEM_KEY.ADJUSTMENT,
+    );
+    const movements: Prisma.StockMovementCreateManyInput[] = [];
+
+    // Group by product so on-hand nets to one update per product; process products in a stable order
+    // and lock the product row before its units (product -> unit), matching POS to avoid deadlocks.
+    const byProduct = this.groupTransitionsByProduct(transitions);
+    for (const productId of [...byProduct.keys()].sort()) {
+      const planned = byProduct.get(productId)!.sort((a, b) => a.unitId.localeCompare(b.unitId));
+
+      const locked = await tx.product.update({
+        where: { id: productId },
+        data: { quantityOnHand: { increment: 0 } },
+      });
+
+      const applied: UnitTransition[] = [];
+      for (const transition of planned) {
+        const changed = await tx.productUnit.updateMany({
+          where: { id: transition.unitId, status: transition.from },
+          data: { status: transition.to },
+        });
+        if (changed.count === 1) applied.push(transition);
+      }
+
+      const netDelta = applied.reduce((sum, transition) => sum + transition.delta, 0);
+      let finalQty = locked.quantityOnHand;
+      if (netDelta !== 0) {
+        const updated = await tx.product.update({
+          where: { id: productId },
+          data: { quantityOnHand: { increment: netDelta } },
+        });
+        if (updated.quantityOnHand < 0) {
+          throw new BadRequestException('Audit completion would drive stock below zero');
+        }
+        finalQty = updated.quantityOnHand;
+      }
+
+      // Ledger rows only for transitions that shift on-hand; running quantityAfter reconstructs the
+      // per-unit snapshots from the product's final balance.
+      let running = finalQty - netDelta;
+      for (const transition of applied) {
+        if (transition.delta === 0) continue;
+        running += transition.delta;
+        movements.push({
+          stockMovementTypeId: adjustmentTypeId,
+          quantityChange: transition.delta,
+          quantityAfter: running,
+          note: `Inventory audit ${audit.auditNo}`,
+          productId,
+          productUnitId: transition.unitId,
+          locationId: audit.locationId,
+          userId,
+        });
+      }
+    }
+
+    if (movements.length > 0) {
+      await tx.stockMovement.createMany({ data: movements });
+    }
+  }
+
+  private async planUnitTransitions(
+    tx: Prisma.TransactionClient,
+    audit: { locationId: string },
+    unitsByScanValue: Map<string, AuditProductUnit>,
+  ): Promise<UnitTransition[]> {
+    // Units resolved by a scan, deduped by unit id. A scanned unit whose home is this location is a
+    // recovery (MATCHED); one whose home is elsewhere was found away from home (MISPLACED).
+    const scannedById = new Map<string, AuditProductUnit>();
+    for (const unit of unitsByScanValue.values()) {
+      if (AUDIT_MANAGED_STATUSES.has(unit.status) && !unit.product.isArchived) {
+        scannedById.set(unit.id, unit);
+      }
+    }
+
+    const expectedHere = await tx.productUnit.findMany({
+      where: {
+        locationId: audit.locationId,
+        status: { in: [...AUDIT_MANAGED_STATUSES] },
+        product: { isArchived: false },
+      },
+      select: { id: true, status: true, productId: true },
+    });
+
+    const transitions: UnitTransition[] = [];
+
+    // Group 1: units that belong here. Scanned -> recovered to IN_STOCK; unscanned IN_STOCK -> MISSING.
+    for (const unit of expectedHere) {
+      const to = scannedById.has(unit.id)
+        ? ProductUnitStatus.IN_STOCK
+        : unit.status === ProductUnitStatus.IN_STOCK
+          ? ProductUnitStatus.MISSING
+          : unit.status; // MISSING/MISPLACED unscanned stay put (no phantom demotion)
+      this.pushTransition(transitions, unit.id, unit.productId, unit.status, to);
+    }
+
+    // Group 2: units scanned here but assigned to another location -> MISPLACED (keep their home).
+    for (const unit of scannedById.values()) {
+      if (unit.locationId === audit.locationId) continue;
+      this.pushTransition(transitions, unit.id, unit.productId, unit.status, ProductUnitStatus.MISPLACED);
+    }
+
+    return transitions;
+  }
+
+  private pushTransition(
+    transitions: UnitTransition[],
+    unitId: string,
+    productId: string,
+    from: ProductUnitStatus,
+    to: ProductUnitStatus,
+  ): void {
+    if (from === to) return; // pure no-op, skip the DB round-trip entirely
+    const delta =
+      (STOCK_COUNTED_STATUSES.has(to) ? 1 : 0) - (STOCK_COUNTED_STATUSES.has(from) ? 1 : 0);
+    transitions.push({ unitId, productId, from, to, delta });
+  }
+
+  private groupTransitionsByProduct(
+    transitions: UnitTransition[],
+  ): Map<string, UnitTransition[]> {
+    const byProduct = new Map<string, UnitTransition[]>();
+    for (const transition of transitions) {
+      const list = byProduct.get(transition.productId) ?? [];
+      list.push(transition);
+      byProduct.set(transition.productId, list);
+    }
+    return byProduct;
   }
 
   async cancelAudit(id: string): Promise<InventoryAuditReport> {
@@ -262,45 +446,30 @@ export class InventoryAuditService {
 
     return {
       ...audit,
-      summary: this.buildSummary(audit.scans, expectedUnits),
+      summary: this.buildSummary(audit.scans, expectedUnits.length),
       buckets: { matched, missing, unknownTag, misplaced },
     };
   }
 
   private buildListItem(
     audit: AuditWithRelations,
-    expectedUnits: AuditProductUnit[],
+    expectedCount: number,
   ): InventoryAuditListItem {
-    return {
-      id: audit.id,
-      auditNo: audit.auditNo,
-      status: audit.status,
-      startedAt: audit.startedAt,
-      completedAt: audit.completedAt,
-      organizationId: audit.organizationId,
-      locationId: audit.locationId,
-      userId: audit.userId,
-      createdAt: audit.createdAt,
-      updatedAt: audit.updatedAt,
-      location: audit.location,
-      user: audit.user,
-      summary: this.buildSummary(audit.scans, expectedUnits),
-    };
+    const { scans, ...rest } = audit;
+    return { ...rest, summary: this.buildSummary(scans, expectedCount) };
   }
 
-  private buildSummary(
-    scans: AuditScan[],
-    expectedUnits: AuditProductUnit[],
-  ) {
+  private buildSummary(scans: AuditScan[], expectedCount: number): InventoryAuditSummary {
     const matchedUnitIds = this.productUnitIdSet(
       scans.filter((scan) => scan.result === InventoryAuditScanResult.MATCHED),
     );
 
     return {
-      expectedCount: expectedUnits.length,
+      expectedCount,
       scannedCount: scans.length,
       matchedCount: matchedUnitIds.size,
-      missingCount: expectedUnits.filter((unit) => !matchedUnitIds.has(unit.id)).length,
+      // Matched units are, by definition, expected here, so this never goes negative.
+      missingCount: Math.max(0, expectedCount - matchedUnitIds.size),
       unknownTagCount: scans.filter(
         (scan) => scan.result === InventoryAuditScanResult.UNKNOWN_TAG,
       ).length,
@@ -374,21 +543,32 @@ export class InventoryAuditService {
     auditId: string,
     auditLocationId: string,
     client: Prisma.TransactionClient,
-  ): Promise<void> {
+  ): Promise<{ unitsByScanValue: Map<string, AuditProductUnit> }> {
     const scans = await client.inventoryAuditScan.findMany({ where: { auditId } });
     const scanValues = scans.map((scan) => scan.scanValue);
     const unitsByScanValue = await this.resolveProductUnitsByScanValue(scanValues, client);
 
+    // Collapse the per-scan updates into one updateMany per distinct (productUnitId, result) pair
+    // instead of a write per scan row.
+    const groups = new Map<string, { productUnitId: string | null; result: InventoryAuditScanResult; ids: string[] }>();
     for (const scan of scans) {
       const productUnit = unitsByScanValue.get(scan.scanValue);
-      await client.inventoryAuditScan.update({
-        where: { id: scan.id },
-        data: {
-          productUnitId: productUnit?.id ?? null,
-          result: this.resolveScanResult(productUnit, auditLocationId),
-        },
+      const productUnitId = productUnit?.id ?? null;
+      const result = this.resolveScanResult(productUnit, auditLocationId);
+      const key = `${productUnitId ?? ''}|${result}`;
+      const group = groups.get(key) ?? { productUnitId, result, ids: [] };
+      group.ids.push(scan.id);
+      groups.set(key, group);
+    }
+
+    for (const group of groups.values()) {
+      await client.inventoryAuditScan.updateMany({
+        where: { id: { in: group.ids } },
+        data: { productUnitId: group.productUnitId, result: group.result },
       });
     }
+
+    return { unitsByScanValue };
   }
 
   private extractScanValues(body: Pick<AddInventoryAuditScansDTO, 'tags' | 'rawInput'>): {

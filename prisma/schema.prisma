@@ -46,6 +46,7 @@ model Organization {
   saleItems           SaleItem[]
   inventoryAudits     InventoryAudit[]
   inventoryAuditScans InventoryAuditScan[]
+  receiptImports      ReceiptImport[]
 
   @@map("organizations")
 }
@@ -569,6 +570,23 @@ model InventoryAuditScan {
   @@map("inventory_audit_scans")
 }
 
+// Idempotency ledger for receipt imports. A commit inserts one row keyed by its idempotencyKey
+// inside the commit transaction; the per-tenant unique constraint makes a concurrent or repeated
+// commit with the same key fail fast (P2002 -> 409) instead of double-stocking inventory.
+model ReceiptImport {
+  id             String @id @default(uuid())
+  idempotencyKey String @map("idempotency_key")
+
+  organizationId String       @default(dbgenerated("current_setting('app.current_org_id'::text, true)")) @map("organization_id")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([organizationId, idempotencyKey])
+  @@index([organizationId])
+  @@map("receipt_imports")
+}
+
 // Subscription tier. BASIC = barcode + everything except RFID; PRO = adds RFID (POS + inventory).
 enum OrgPlan {
   BASIC
@@ -584,10 +602,13 @@ enum PrinterType {
 enum ProductUnitStatus {
   IN_STOCK
   RESERVED
+  MISPLACED
   SOLD
   DAMAGED
   RETURNED
+  MISSING
   LOST
+  DISPOSED
 }
 
 enum StockMovementEffect {

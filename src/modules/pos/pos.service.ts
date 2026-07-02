@@ -10,7 +10,7 @@ import {
 } from '@prisma/client';
 
 import { PrismaService } from '../../core/database/prisma.service';
-import { PaginatedResponse } from '../../common/responses/paginated-api.response';
+import { PaginatedResponse, paginationMeta } from '../../common/responses/paginated-api.response';
 import { CheckoutPosDTO, CheckoutPosItemDTO } from './dto/checkout-pos.dto';
 import { FilterSalesDTO } from './dto/filter-sales.dto';
 import { ListProductUnitsDTO } from './dto/list-product-units.dto';
@@ -30,6 +30,7 @@ import {
 } from './types/pos.types';
 import { STOCK_MOVEMENT_SYSTEM_KEY } from '../stock-movement-types/constants/stock-movement-type.constants';
 import { getSystemStockMovementTypeId } from '../stock-movement-types/utils/stock-movement-type.utils';
+import { SELLABLE_UNIT_STATUSES } from '../../common/constants/product-unit-status.constants';
 
 type PrismaClientLike = PrismaService | Prisma.TransactionClient;
 
@@ -59,12 +60,6 @@ interface SaleTotals {
   amountTendered: Prisma.Decimal;
   changeDue: Prisma.Decimal;
 }
-
-const SELLABLE_UNIT_STATUSES = new Set<ProductUnitStatus>([
-  ProductUnitStatus.IN_STOCK,
-  ProductUnitStatus.RESERVED,
-  ProductUnitStatus.RETURNED,
-]);
 
 @Injectable()
 export class PosService {
@@ -219,10 +214,7 @@ export class PosService {
       return { data: rows, total: count };
     });
 
-    return {
-      data,
-      meta: { total, page, limit, lastPage: Math.max(1, Math.ceil(total / limit)) },
-    };
+    return { data, meta: paginationMeta(total, page, limit) };
   }
 
   async getSale(id: string): Promise<PosSaleResult> {

@@ -26,6 +26,7 @@ import { InventoryAuditModule } from './modules/inventory-audit/inventory-audit.
 import { PosModule } from './modules/pos/pos.module';
 import { ReceiptImportsModule } from './modules/receipt-imports/receipt-imports.module';
 import { EntitlementsModule } from './modules/entitlements/entitlements.module';
+import { ReportsModule } from './modules/reports/reports.module';
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { EntitlementsModule } from './modules/entitlements/entitlements.module';
     ReceiptImportsModule,
     PlatformModule,
     EntitlementsModule,
+    ReportsModule,
   ],
   controllers: [AppController],
   providers: [

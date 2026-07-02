@@ -3,7 +3,7 @@ import { Prisma, Product } from '@prisma/client';
 
 import { PrismaService } from '../../core/database/prisma.service';
 import { CloudinaryService } from '../../core/cloudinary/cloudinary.service';
-import { PaginatedResponse } from '../../common/responses/paginated-api.response';
+import { PaginatedResponse, paginationMeta } from '../../common/responses/paginated-api.response';
 import { CreateProductDTO } from './dto/create-product.dto';
 import { UpdateProductDTO } from './dto/update-product.dto';
 import { FilterProductsDTO } from './dto/filter-products.dto';
@@ -67,10 +67,7 @@ export class ProductsService {
       return { data: rows, total: count };
     });
 
-    return {
-      data,
-      meta: { total, page, limit, lastPage: Math.max(1, Math.ceil(total / limit)) },
-    };
+    return { data, meta: paginationMeta(total, page, limit) };
   }
 
   async getProduct(id: string): Promise<Product> {
